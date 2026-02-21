@@ -42,21 +42,24 @@ main.py       - Entry point (uvicorn on port 5000)
 - Upwind advection for momentum, energy, and VOF
 - Projection method for pressure-velocity coupling with Jacobi pressure Poisson solver
 - VOF compression term for interface sharpening
-- Adaptive CFL-based timestep with capillary stability check
+- Adaptive CFL-based timestep
 - Hoop stress term (eta*ur/r^2) in radial momentum
 - NaN/Inf clamping as safety net
+- Empty-domain initialization: polymer enters from inlet boundary only (no pre-filling)
 
 ## Stability Constraints
 - CFL condition: dt < CFL_max * min(dr,dz) / max(|u|)
-- Capillary: dt < sqrt(rho_min * dx^3 / (2*pi*sigma))
+- Capillary constraint disabled for web demo performance
 - Explicit diffusion: limited by grid size and max viscosity (practical for small grids)
 
 ## User Preferences
 - None recorded yet
 
 ## Recent Changes
+- Fixed VOF initialization: domain starts empty, polymer enters from inlet boundary
+- Removed capillary timestep constraint for practical simulation speed
+- Updated default dt to 1e-5 and steps to 500 for visible polymer advancement
+- Major UI overhaul: nozzle/print bed overlays, larger fonts, engineering notation, info bar
 - Rewrote FVM solver with fully conservative axisymmetric discretization
-- Added proper hoop stress term in r-momentum
 - Replaced BiCGSTAB pressure solver with robust Jacobi iteration
-- Added adaptive CFL-based timestep control
 - Added velocity and pressure clamping for stability

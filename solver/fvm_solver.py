@@ -553,22 +553,8 @@ class CFDSolver:
         self.T = np.full((nr, nz), self.T_ambient)
         self.alpha = np.zeros((nr, nz))
 
-        g = self.grid
-        nozzle_r_idx = np.searchsorted(g.r_faces, self.nozzle_radius)
-        nozzle_z_idx = np.searchsorted(g.z_centers, 0.0)
-
-        for i in range(min(nozzle_r_idx, nr)):
-            for j in range(min(nozzle_z_idx, nz)):
-                self.alpha[i, j] = 1.0
-                self.T[i, j] = self.T_nozzle
-
         inlet_area = np.pi * self.nozzle_radius**2
         self.u_inlet = self.flow_rate / max(inlet_area, 1e-20)
-
-        for i in range(min(nozzle_r_idx, nr)):
-            r = g.r_centers[i]
-            R = self.nozzle_radius
-            self.uz[i, :nozzle_z_idx] = 2.0 * self.u_inlet * (1.0 - (r / R)**2)
 
         self.rho = np.zeros((nr, nz))
         self.cp = np.zeros((nr, nz))
@@ -627,13 +613,7 @@ class CFDSolver:
         if u_max_z > 1e-10:
             dt_cfl = min(dt_cfl, self.cfl_max * g.dz / u_max_z)
 
-        dt_cap = self.dt
-        rho_min = np.min(self.rho[self.rho > 0]) if np.any(self.rho > 0) else 1.0
-        if self.material.sigma > 0:
-            dt_cap = np.sqrt(rho_min * min(g.dr, g.dz)**3 /
-                           (2.0 * np.pi * self.material.sigma))
-
-        dt_adapt = min(dt_cfl, dt_cap, self.dt)
+        dt_adapt = min(dt_cfl, self.dt)
         return max(dt_adapt, self.dt * 0.01)
 
     def _solve_pressure_poisson(self, div_star, dt_sub):
