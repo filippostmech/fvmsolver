@@ -10,7 +10,7 @@
     <div class="app-container">
         <header class="header">
             <h1>FDM Extrusion CFD Solver</h1>
-            <p class="subtitle">2D Axisymmetric FVM | Navier-Stokes + VOF + Carreau-Yasuda</p>
+            <p class="subtitle">2D Axisymmetric FVM &bull; Navier-Stokes + VOF + Carreau-Yasuda</p>
         </header>
 
         <div class="main-layout">
@@ -97,46 +97,51 @@
                     <div class="progress-bar">
                         <div id="progress-fill" class="progress-fill"></div>
                     </div>
-                    <div id="diagnostics-text" class="diagnostics-text"></div>
+                    <div id="diagnostics-container" class="diagnostics-container"></div>
                 </div>
             </aside>
 
             <main class="content">
+                <div class="sim-info-bar" id="sim-info-bar">
+                    <div class="sim-info-left" id="sim-info-left">Ready to simulate</div>
+                    <div class="sim-info-right" id="sim-info-right"></div>
+                </div>
+
                 <div class="viz-controls">
                     <label>Field:
                         <select id="field-select">
-                            <option value="alpha">VOF (alpha)</option>
-                            <option value="u_mag">Velocity |u|</option>
+                            <option value="alpha">VOF (Polymer Fraction)</option>
+                            <option value="u_mag">Velocity Magnitude</option>
                             <option value="T">Temperature</option>
                             <option value="p">Pressure</option>
                             <option value="eta">Viscosity</option>
                         </select>
                     </label>
                     <label>
-                        <input type="checkbox" id="show-contour" checked> Show free surface
+                        <input type="checkbox" id="show-contour" checked> Free surface
                     </label>
                     <label>
-                        <input type="checkbox" id="show-nozzle" checked> Show nozzle
+                        <input type="checkbox" id="show-nozzle" checked> Nozzle
                     </label>
                 </div>
 
                 <div class="canvas-container">
-                    <canvas id="field-canvas" width="500" height="700"></canvas>
-                    <canvas id="colorbar-canvas" width="60" height="700"></canvas>
+                    <canvas id="field-canvas" width="560" height="720"></canvas>
+                    <canvas id="colorbar-canvas" width="90" height="720"></canvas>
                 </div>
 
                 <div class="plots-row">
                     <div class="plot-container">
                         <h4>Pressure Drop vs Time</h4>
-                        <canvas id="plot-pressure" width="350" height="200"></canvas>
+                        <canvas id="plot-pressure" width="400" height="220"></canvas>
                     </div>
                     <div class="plot-container">
                         <h4>Swell Ratio vs z</h4>
-                        <canvas id="plot-swell" width="350" height="200"></canvas>
+                        <canvas id="plot-swell" width="400" height="220"></canvas>
                     </div>
                     <div class="plot-container">
                         <h4>Centerline Temperature vs z</h4>
-                        <canvas id="plot-temperature" width="350" height="200"></canvas>
+                        <canvas id="plot-temperature" width="400" height="220"></canvas>
                     </div>
                 </div>
             </main>

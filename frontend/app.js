@@ -1,6 +1,5 @@
 const API_BASE = '';
 let currentRunId = null;
-let ws = null;
 let pollInterval = null;
 let pressureHistory = [];
 let latestDiag = null;
@@ -16,8 +15,10 @@ const btnPause = document.getElementById('btn-pause');
 const btnStop = document.getElementById('btn-stop');
 const statusText = document.getElementById('status-text');
 const progressFill = document.getElementById('progress-fill');
-const diagText = document.getElementById('diagnostics-text');
+const diagContainer = document.getElementById('diagnostics-container');
 const fieldSelect = document.getElementById('field-select');
+const simInfoLeft = document.getElementById('sim-info-left');
+const simInfoRight = document.getElementById('sim-info-right');
 
 btnRun.addEventListener('click', startSimulation);
 btnPause.addEventListener('click', pauseSimulation);
@@ -25,6 +26,32 @@ btnStop.addEventListener('click', stopSimulation);
 fieldSelect.addEventListener('change', () => { if (latestFrame) renderField(latestFrame); });
 document.getElementById('show-contour').addEventListener('change', () => { if (latestFrame) renderField(latestFrame); });
 document.getElementById('show-nozzle').addEventListener('change', () => { if (latestFrame) renderField(latestFrame); });
+
+const FIELD_INFO = {
+    alpha: { title: 'VOF - Polymer Volume Fraction', unit: '', fmt: v => v.toFixed(3) },
+    u_mag: { title: 'Velocity Magnitude', unit: 'm/s', fmt: v => engFormat(v) },
+    T: { title: 'Temperature', unit: 'K', fmt: v => v.toFixed(1) },
+    p: { title: 'Pressure', unit: 'Pa', fmt: v => engFormat(v) },
+    eta: { title: 'Viscosity', unit: 'Pa\u00B7s', fmt: v => engFormat(v) },
+};
+
+function engFormat(val) {
+    const abs = Math.abs(val);
+    if (abs === 0) return '0';
+    if (abs >= 1e6) return (val / 1e6).toFixed(2) + ' M';
+    if (abs >= 1e3) return (val / 1e3).toFixed(2) + ' k';
+    if (abs >= 1) return val.toFixed(2);
+    if (abs >= 1e-3) return (val * 1e3).toFixed(2) + ' m';
+    if (abs >= 1e-6) return (val * 1e6).toFixed(2) + ' \u00B5';
+    return val.toExponential(2);
+}
+
+function engFormatPa(val) {
+    const abs = Math.abs(val);
+    if (abs >= 1e6) return (val / 1e6).toFixed(2) + ' MPa';
+    if (abs >= 1e3) return (val / 1e3).toFixed(1) + ' kPa';
+    return val.toFixed(1) + ' Pa';
+}
 
 function getConfig() {
     return {
@@ -54,6 +81,12 @@ async function startSimulation() {
     pressureHistory = [];
     latestDiag = null;
     latestFrame = null;
+
+    const diam = document.getElementById('nozzle_diameter').value;
+    const flow = document.getElementById('flow_rate').value;
+    const temp = document.getElementById('T_nozzle').value;
+    simInfoLeft.textContent = `TPU extrusion: ${diam} mm nozzle, ${flow} mm\u00B3/s, ${temp}\u00B0C`;
+    simInfoRight.textContent = '';
 
     try {
         const resp = await fetch(`${API_BASE}/api/simulate`, {
@@ -113,6 +146,7 @@ async function pollStatus() {
             renderField(data.frame);
             updateDiagnostics(data.frame.diagnostics);
             updatePlots(data.frame.diagnostics);
+            updateSimInfo(data.frame.diagnostics);
         }
 
         const pct = data.total_steps > 0 ? (data.current_step / data.total_steps * 100) : 0;
@@ -136,23 +170,45 @@ async function pollStatus() {
     } catch (e) {}
 }
 
-function colormap(val, min_v, max_v) {
-    let t = (val - min_v) / Math.max(max_v - min_v, 1e-30);
+function updateSimInfo(diag) {
+    if (!diag || diag.step === undefined) return;
+    const timeStr = diag.time < 1e-3
+        ? (diag.time * 1e6).toFixed(1) + ' \u00B5s'
+        : diag.time < 1
+            ? (diag.time * 1e3).toFixed(2) + ' ms'
+            : diag.time.toFixed(4) + ' s';
+    simInfoRight.textContent = `Step ${diag.step} | t = ${timeStr} | CFL = ${diag.cfl.toFixed(4)}`;
+}
+
+function colormap(t) {
     t = Math.max(0, Math.min(1, t));
 
     let r, g, b;
-    if (t < 0.25) {
-        const s = t / 0.25;
-        r = 0; g = Math.floor(s * 255); b = 255;
-    } else if (t < 0.5) {
-        const s = (t - 0.25) / 0.25;
-        r = 0; g = 255; b = Math.floor((1 - s) * 255);
-    } else if (t < 0.75) {
-        const s = (t - 0.5) / 0.25;
-        r = Math.floor(s * 255); g = 255; b = 0;
+    if (t < 0.2) {
+        const s = t / 0.2;
+        r = Math.floor(15 + s * 45);
+        g = Math.floor(10 + s * 50);
+        b = Math.floor(80 + s * 140);
+    } else if (t < 0.4) {
+        const s = (t - 0.2) / 0.2;
+        r = Math.floor(60 - s * 30);
+        g = Math.floor(60 + s * 140);
+        b = Math.floor(220 - s * 40);
+    } else if (t < 0.6) {
+        const s = (t - 0.4) / 0.2;
+        r = Math.floor(30 + s * 80);
+        g = Math.floor(200 + s * 50);
+        b = Math.floor(180 - s * 120);
+    } else if (t < 0.8) {
+        const s = (t - 0.6) / 0.2;
+        r = Math.floor(110 + s * 145);
+        g = Math.floor(250 - s * 50);
+        b = Math.floor(60 - s * 40);
     } else {
-        const s = (t - 0.75) / 0.25;
-        r = 255; g = Math.floor((1 - s) * 255); b = 0;
+        const s = (t - 0.8) / 0.2;
+        r = 255;
+        g = Math.floor(200 - s * 170);
+        b = Math.floor(20 + s * 20);
     }
     return `rgb(${r},${g},${b})`;
 }
@@ -176,33 +232,38 @@ function renderField(frame) {
     for (let i = 0; i < nr; i++) {
         for (let j = 0; j < nz; j++) {
             const v = data[i][j];
-            if (v < fmin) fmin = v;
-            if (v > fmax) fmax = v;
+            if (isFinite(v)) {
+                if (v < fmin) fmin = v;
+                if (v > fmax) fmax = v;
+            }
         }
     }
-
+    if (!isFinite(fmin) || !isFinite(fmax)) {
+        fmin = 0; fmax = 1;
+    }
     if (Math.abs(fmax - fmin) < 1e-20) {
         fmax = fmin + 1;
     }
 
-    const margin = 30;
-    const plotW = cw - 2 * margin;
-    const plotH = ch - 2 * margin;
+    const margin = { top: 50, bottom: 50, left: 50, right: 20 };
+    const plotW = cw - margin.left - margin.right;
+    const plotH = ch - margin.top - margin.bottom;
     const halfW = plotW / 2;
 
     const cellW = halfW / nr;
     const cellH = plotH / nz;
 
-    const centerX = margin + halfW;
+    const centerX = margin.left + halfW;
 
     for (let i = 0; i < nr; i++) {
         for (let j = 0; j < nz; j++) {
             const v = data[i][j];
-            const col = colormap(v, fmin, fmax);
+            const t = (v - fmin) / (fmax - fmin);
+            const col = colormap(t);
 
             const x_right = centerX + i * cellW;
             const x_left = centerX - (i + 1) * cellW;
-            const y = margin + (nz - 1 - j) * cellH;
+            const y = margin.top + (nz - 1 - j) * cellH;
 
             ctx.fillStyle = col;
             ctx.fillRect(x_right, y, cellW + 0.5, cellH + 0.5);
@@ -210,53 +271,125 @@ function renderField(frame) {
         }
     }
 
-    if (document.getElementById('show-nozzle').checked) {
-        const nozzleRFrac = frame.nozzle_radius / (frame.r_centers[nr - 1] + (frame.r_centers[1] - frame.r_centers[0]) * 0.5);
+    const rMax = frame.r_centers[nr - 1] + (frame.r_centers[1] - frame.r_centers[0]) * 0.5;
+    const zMin = frame.z_centers[0];
+    const zMax = frame.z_centers[nz - 1];
+    const zRange = zMax - zMin;
+
+    const showNozzle = document.getElementById('show-nozzle').checked;
+
+    if (showNozzle) {
+        const nozzleRFrac = frame.nozzle_radius / rMax;
         const nozzleRPx = nozzleRFrac * halfW;
         const nozzleZEnd = frame.nozzle_z_end;
-        const zMin = frame.z_centers[0];
-        const zMax = frame.z_centers[nz - 1];
-        const zFrac = (nozzleZEnd - zMin) / (zMax - zMin);
-        const nozzleYPx = margin + (1 - zFrac) * plotH;
+        const zFrac = (nozzleZEnd - zMin) / zRange;
+        const nozzleYPx = margin.top + (1 - zFrac) * plotH;
 
-        ctx.strokeStyle = '#ffab40';
-        ctx.lineWidth = 2;
+        const wallThick = 8;
 
-        ctx.beginPath();
-        ctx.moveTo(centerX + nozzleRPx, margin);
-        ctx.lineTo(centerX + nozzleRPx, nozzleYPx);
-        ctx.stroke();
+        ctx.fillStyle = '#5c6b7a';
+        ctx.fillRect(centerX + nozzleRPx, margin.top, wallThick, nozzleYPx - margin.top);
+        ctx.fillRect(centerX - nozzleRPx - wallThick, margin.top, wallThick, nozzleYPx - margin.top);
 
-        ctx.beginPath();
-        ctx.moveTo(centerX - nozzleRPx, margin);
-        ctx.lineTo(centerX - nozzleRPx, nozzleYPx);
-        ctx.stroke();
+        ctx.fillStyle = '#6d7e8f';
+        ctx.fillRect(centerX + nozzleRPx, margin.top, wallThick, 4);
+        ctx.fillRect(centerX - nozzleRPx - wallThick, margin.top, wallThick, 4);
 
-        ctx.strokeStyle = '#ffab40';
+        const outerExtend = 30;
+        ctx.fillStyle = '#5c6b7a';
+        ctx.fillRect(centerX + nozzleRPx + wallThick, nozzleYPx - 6, outerExtend, 6);
+        ctx.fillRect(centerX - nozzleRPx - wallThick - outerExtend, nozzleYPx - 6, outerExtend, 6);
+
+        ctx.strokeStyle = '#8899aa';
         ctx.lineWidth = 1;
-        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(centerX + nozzleRPx, margin.top, wallThick, nozzleYPx - margin.top);
+        ctx.strokeRect(centerX - nozzleRPx - wallThick, margin.top, wallThick, nozzleYPx - margin.top);
+
+        ctx.fillStyle = '#8899aa';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('NOZZLE', centerX, margin.top + 20);
+
+        const arrowY1 = margin.top + 30;
+        const arrowY2 = margin.top + 55;
+        const arrowX = centerX;
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(margin, nozzleYPx);
-        ctx.lineTo(cw - margin, nozzleYPx);
+        ctx.moveTo(arrowX, arrowY1);
+        ctx.lineTo(arrowX, arrowY2);
         ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(arrowX - 5, arrowY2 - 6);
+        ctx.lineTo(arrowX, arrowY2);
+        ctx.lineTo(arrowX + 5, arrowY2 - 6);
+        ctx.stroke();
+
+        ctx.font = '11px sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillText('flow', arrowX + 18, (arrowY1 + arrowY2) / 2 + 4);
+
+        ctx.fillStyle = 'rgba(255, 171, 64, 0.8)';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('Nozzle Exit', centerX + nozzleRPx + wallThick + outerExtend - 2, nozzleYPx - 10);
+
+        ctx.fillStyle = 'rgba(120, 180, 255, 0.6)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'left';
+        const extrudateY = nozzleYPx + (margin.top + plotH - nozzleYPx) * 0.3;
+        ctx.fillText('Extrudate', centerX + nozzleRPx + wallThick + 6, extrudateY);
+
+        ctx.fillStyle = 'rgba(100, 160, 220, 0.4)';
+        ctx.textAlign = 'right';
+        ctx.fillText('Air', centerX - nozzleRPx - wallThick - outerExtend + 5, extrudateY);
     }
 
-    if (document.getElementById('show-contour').checked && frame.contour_r && frame.contour_r.length > 0) {
-        const rMax = frame.r_centers[nr - 1] + (frame.r_centers[1] - frame.r_centers[0]) * 0.5;
-        const zMin = frame.z_centers[0];
-        const zMax = frame.z_centers[nz - 1];
-        const zRange = zMax - zMin;
+    const bedY = margin.top + plotH;
+    const bedH = 10;
+    const grad = ctx.createLinearGradient(0, bedY, 0, bedY + bedH);
+    grad.addColorStop(0, '#607d8b');
+    grad.addColorStop(1, '#37474f');
+    ctx.fillStyle = grad;
+    ctx.fillRect(margin.left - 10, bedY, plotW + 20, bedH);
+    ctx.strokeStyle = '#90a4ae';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(margin.left - 10, bedY, plotW + 20, bedH);
 
+    ctx.fillStyle = '#90a4ae';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PRINT BED', centerX, bedY + bedH + 16);
+
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(centerX, margin.top);
+    ctx.lineTo(centerX, bedY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.save();
+    ctx.translate(centerX + 4, bedY - 14);
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.textAlign = 'left';
+    ctx.fillText('axis of symmetry', 0, 0);
+    ctx.restore();
+
+    if (document.getElementById('show-contour').checked && frame.contour_r && frame.contour_r.length > 0) {
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(255,255,255,0.4)';
+        ctx.shadowBlur = 4;
 
         const points = [];
         for (let k = 0; k < frame.contour_r.length; k++) {
             const rFrac = frame.contour_r[k] / rMax;
             const zFrac = (frame.contour_z[k] - zMin) / zRange;
             const px = centerX + rFrac * halfW;
-            const py = margin + (1 - zFrac) * plotH;
+            const py = margin.top + (1 - zFrac) * plotH;
             points.push({ x: px, y: py, xm: centerX - rFrac * halfW });
         }
 
@@ -277,91 +410,224 @@ function renderField(frame) {
             }
             ctx.stroke();
         }
+        ctx.shadowBlur = 0;
     }
 
+    const rMaxMM = rMax * 1000;
+    const zRangeMM = zRange * 1000;
+
+    ctx.fillStyle = '#b0bec5';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('r (mm)', centerX + halfW / 2, ch - 8);
+
+    ctx.save();
+    ctx.translate(14, margin.top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#b0bec5';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('z (mm)', 0, 0);
+    ctx.restore();
+
+    ctx.font = '11px sans-serif';
     ctx.fillStyle = '#7a8fa6';
-    ctx.font = '10px monospace';
-    ctx.fillText('r', cw - margin + 5, ch / 2);
-    ctx.fillText('z', cw / 2 - 3, margin - 5);
+    ctx.textAlign = 'center';
+
+    const nTicksR = 4;
+    for (let i = 0; i <= nTicksR; i++) {
+        const frac = i / nTicksR;
+        const px_r = centerX + frac * halfW;
+        const px_l = centerX - frac * halfW;
+        const val = (frac * rMaxMM).toFixed(2);
+
+        ctx.fillText(val, px_r, margin.top + plotH + 28);
+        if (i > 0) {
+            ctx.fillText('-' + val, px_l, margin.top + plotH + 28);
+        }
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 0.5;
+        if (i > 0 && i < nTicksR) {
+            ctx.beginPath();
+            ctx.moveTo(px_r, margin.top);
+            ctx.lineTo(px_r, margin.top + plotH);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(px_l, margin.top);
+            ctx.lineTo(px_l, margin.top + plotH);
+            ctx.stroke();
+        }
+    }
+
+    ctx.textAlign = 'right';
+    const nTicksZ = 5;
+    for (let i = 0; i <= nTicksZ; i++) {
+        const frac = i / nTicksZ;
+        const py = margin.top + frac * plotH;
+        const zVal = ((1 - frac) * zRangeMM + zMin * 1000).toFixed(2);
+
+        ctx.fillText(zVal, margin.left - 6, py + 4);
+
+        if (i > 0 && i < nTicksZ) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(margin.left, py);
+            ctx.lineTo(margin.left + plotW, py);
+            ctx.stroke();
+        }
+    }
+
+    const scaleBarLen = 0.1e-3;
+    const scaleBarPx = (scaleBarLen / rMax) * halfW;
+    const scaleBarX = margin.left + 10;
+    const scaleBarY = margin.top + plotH - 20;
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(scaleBarX, scaleBarY, scaleBarPx, 3);
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText((scaleBarLen * 1000).toFixed(1) + ' mm', scaleBarX, scaleBarY - 5);
 
     renderColorbar(fmin, fmax, fieldName);
 }
 
-function renderColorbar(fmin, fmax, label) {
+function renderColorbar(fmin, fmax, fieldName) {
     const ctx = colorbarCtx;
     const cw = colorbarCanvas.width;
     const ch = colorbarCanvas.height;
-    const margin = 30;
+    const marginTop = 50;
+    const marginBot = 50;
 
-    ctx.fillStyle = '#0a1520';
+    ctx.fillStyle = '#0f1923';
     ctx.fillRect(0, 0, cw, ch);
 
-    const barW = 15;
-    const barH = ch - 2 * margin;
-    const barX = 5;
+    const barW = 22;
+    const barH = ch - marginTop - marginBot;
+    const barX = 8;
 
     for (let y = 0; y < barH; y++) {
         const t = 1 - y / barH;
-        const val = fmin + t * (fmax - fmin);
-        ctx.fillStyle = colormap(val, fmin, fmax);
-        ctx.fillRect(barX, margin + y, barW, 1);
+        ctx.fillStyle = colormap(t);
+        ctx.fillRect(barX, marginTop + y, barW, 1);
     }
 
-    ctx.strokeStyle = '#2a4a6b';
-    ctx.strokeRect(barX, margin, barW, barH);
+    ctx.strokeStyle = '#5c6b7a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, marginTop, barW, barH);
 
-    ctx.fillStyle = '#9ab';
-    ctx.font = '9px monospace';
+    const info = FIELD_INFO[fieldName] || { title: fieldName, unit: '', fmt: v => v.toFixed(3) };
 
-    const nTicks = 5;
+    ctx.fillStyle = '#4fc3f7';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'left';
+
+    const titleLines = info.title.split(' - ');
+    titleLines.forEach((line, idx) => {
+        ctx.fillText(line, barX, marginTop - 12 - (titleLines.length - 1 - idx) * 14);
+    });
+
+    ctx.fillStyle = '#b0bec5';
+    ctx.font = '12px monospace';
+
+    const nTicks = 6;
     for (let i = 0; i <= nTicks; i++) {
         const frac = i / nTicks;
         const val = fmax - frac * (fmax - fmin);
-        const y = margin + frac * barH;
+        const y = marginTop + frac * barH;
+
+        ctx.strokeStyle = '#5c6b7a';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(barX + barW, y);
+        ctx.lineTo(barX + barW + 4, y);
+        ctx.stroke();
+
         let txt;
-        if (Math.abs(val) > 1e4 || (Math.abs(val) < 0.01 && val !== 0)) {
-            txt = val.toExponential(1);
-        } else {
+        const abs = Math.abs(val);
+        if (abs === 0) {
+            txt = '0';
+        } else if (abs >= 1e6) {
+            txt = (val / 1e6).toFixed(1) + 'M';
+        } else if (abs >= 1e3) {
+            txt = (val / 1e3).toFixed(1) + 'k';
+        } else if (abs >= 1) {
             txt = val.toFixed(2);
+        } else if (abs >= 0.01) {
+            txt = val.toFixed(3);
+        } else {
+            txt = val.toExponential(1);
         }
-        ctx.fillText(txt, barX + barW + 3, y + 3);
+        ctx.fillText(txt, barX + barW + 7, y + 4);
     }
 
-    ctx.fillStyle = '#4fc3f7';
-    ctx.fillText(label, barX, margin - 8);
+    if (info.unit) {
+        ctx.fillStyle = '#7a8fa6';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('[' + info.unit + ']', barX, ch - marginBot + 20);
+    }
 }
 
 function updateDiagnostics(diag) {
     if (!diag) return;
-    const lines = [
-        `Step: ${diag.step}  t=${diag.time.toExponential(3)}s`,
-        `CFL: ${diag.cfl.toFixed(4)}`,
-        `Cap dt: ${diag.capillary_dt.toExponential(2)}`,
-        `alpha: [${diag.alpha_min.toFixed(4)}, ${diag.alpha_max.toFixed(4)}]`,
-        `T: [${(diag.T_min-273.15).toFixed(1)}, ${(diag.T_max-273.15).toFixed(1)}] C`,
-        `eta: [${diag.eta_min.toExponential(2)}, ${diag.eta_max.toExponential(2)}]`,
-        `|u|_max: ${diag.u_max.toExponential(3)} m/s`,
-        `p: [${diag.p_min.toExponential(2)}, ${diag.p_max.toExponential(2)}]`,
-        `dP: ${diag.pressure_drop.toExponential(3)} Pa`,
-        `Mass: ${diag.mass_polymer.toExponential(4)} kg`,
-    ];
-    diagText.textContent = lines.join('\n');
+
+    const cflClass = diag.cfl < 0.5 ? 'good' : diag.cfl < 1.0 ? 'warn' : 'bad';
+    const dpStr = engFormatPa(diag.pressure_drop);
+    const tMin = (diag.T_min - 273.15).toFixed(0);
+    const tMax = (diag.T_max - 273.15).toFixed(0);
+
+    diagContainer.innerHTML = `
+        <div class="diag-grid">
+            <div class="diag-item">
+                <span class="diag-label">CFL</span>
+                <span class="diag-value ${cflClass}">${diag.cfl.toFixed(4)}</span>
+            </div>
+            <div class="diag-item">
+                <span class="diag-label">\u0394P</span>
+                <span class="diag-value neutral">${dpStr}</span>
+            </div>
+            <div class="diag-item">
+                <span class="diag-label">|u| max</span>
+                <span class="diag-value neutral">${engFormat(diag.u_max)} m/s</span>
+            </div>
+            <div class="diag-item">
+                <span class="diag-label">Mass</span>
+                <span class="diag-value neutral">${diag.mass_polymer.toExponential(2)} kg</span>
+            </div>
+            <div class="diag-item">
+                <span class="diag-label">T range</span>
+                <span class="diag-value neutral">${tMin}\u2013${tMax} \u00B0C</span>
+            </div>
+            <div class="diag-item">
+                <span class="diag-label">\u03B7 range</span>
+                <span class="diag-value neutral">${engFormat(diag.eta_min)}\u2013${engFormat(diag.eta_max)}</span>
+            </div>
+            <div class="diag-item">
+                <span class="diag-label">\u03B1 range</span>
+                <span class="diag-value neutral">${diag.alpha_min.toFixed(3)}\u2013${diag.alpha_max.toFixed(3)}</span>
+            </div>
+            <div class="diag-item">
+                <span class="diag-label">dt used</span>
+                <span class="diag-value neutral">${diag.dt_used.toExponential(2)} s</span>
+            </div>
+        </div>
+    `;
 }
 
 function updatePlots(diag) {
     if (!diag) return;
     pressureHistory.push({ time: diag.time, dp: diag.pressure_drop });
 
-    drawLinePlot('plot-pressure', pressureHistory.map(p => p.time), pressureHistory.map(p => p.dp), 'Time (s)', 'dP (Pa)', '#4fc3f7');
-    drawLinePlot('plot-swell', null, diag.swell_ratios, 'z index', 'Swell ratio', '#ff7043');
+    drawLinePlot('plot-pressure', pressureHistory.map(p => p.time), pressureHistory.map(p => p.dp), 'Time (s)', 'Pressure Drop', '#4fc3f7', 'Pa');
+    drawLinePlot('plot-swell', null, diag.swell_ratios, 'z index', 'Swell Ratio', '#ff7043', '');
 
     if (diag.centerline_T) {
         const temps = diag.centerline_T.map(t => t - 273.15);
-        drawLinePlot('plot-temperature', null, temps, 'z index', 'T (C)', '#66bb6a');
+        drawLinePlot('plot-temperature', null, temps, 'z index', 'Temperature', '#66bb6a', '\u00B0C');
     }
 }
 
-function drawLinePlot(canvasId, xVals, yVals, xlabel, ylabel, color) {
+function drawLinePlot(canvasId, xVals, yVals, xlabel, ylabel, color, unit) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -373,7 +639,7 @@ function drawLinePlot(canvasId, xVals, yVals, xlabel, ylabel, color) {
 
     if (!yVals || yVals.length === 0) return;
 
-    const margin = { top: 15, right: 15, bottom: 25, left: 55 };
+    const margin = { top: 20, right: 20, bottom: 35, left: 70 };
     const pw = cw - margin.left - margin.right;
     const ph = ch - margin.top - margin.bottom;
 
@@ -390,7 +656,7 @@ function drawLinePlot(canvasId, xVals, yVals, xlabel, ylabel, color) {
     if (xmax === xmin) xmax = xmin + 1;
     if (ymax === ymin) { ymax = ymin + 1; ymin = ymin - 1; }
 
-    const pad = (ymax - ymin) * 0.05;
+    const pad = (ymax - ymin) * 0.08;
     ymin -= pad;
     ymax += pad;
 
@@ -402,24 +668,35 @@ function drawLinePlot(canvasId, xVals, yVals, xlabel, ylabel, color) {
     for (let i = 0; i <= 4; i++) {
         const yv = ymin + (i / 4) * (ymax - ymin);
         const py = ty(yv);
+
+        ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(margin.left, py);
         ctx.lineTo(cw - margin.right, py);
         ctx.stroke();
+        ctx.setLineDash([]);
 
-        ctx.fillStyle = '#7a8fa6';
-        ctx.font = '8px monospace';
+        ctx.fillStyle = '#90a4ae';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'right';
         let label;
-        if (Math.abs(yv) > 1e4 || (Math.abs(yv) < 0.01 && yv !== 0)) {
-            label = yv.toExponential(1);
+        const abs = Math.abs(yv);
+        if (abs >= 1e6) {
+            label = (yv / 1e6).toFixed(1) + 'M';
+        } else if (abs >= 1e3) {
+            label = (yv / 1e3).toFixed(1) + 'k';
+        } else if (abs >= 1 || abs === 0) {
+            label = yv.toFixed(1);
+        } else if (abs >= 0.01) {
+            label = yv.toFixed(3);
         } else {
-            label = yv.toFixed(2);
+            label = yv.toExponential(1);
         }
-        ctx.fillText(label, 2, py + 3);
+        ctx.fillText(label, margin.left - 6, py + 4);
     }
 
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     for (let i = 0; i < xVals.length; i++) {
         const px = tx(xVals[i]);
@@ -429,19 +706,32 @@ function drawLinePlot(canvasId, xVals, yVals, xlabel, ylabel, color) {
     }
     ctx.stroke();
 
-    ctx.fillStyle = '#7a8fa6';
-    ctx.font = '9px sans-serif';
-    ctx.fillText(xlabel, cw / 2 - 15, ch - 3);
+    ctx.fillStyle = '#90a4ae';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(xlabel, margin.left + pw / 2, ch - 8);
 
     ctx.save();
-    ctx.translate(10, ch / 2);
+    ctx.translate(14, margin.top + ph / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText(ylabel, -20, 0);
+    ctx.fillStyle = '#90a4ae';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    const yLabel = unit ? ylabel + ' (' + unit + ')' : ylabel;
+    ctx.fillText(yLabel, 0, 0);
     ctx.restore();
+
+    ctx.strokeStyle = '#2a4a6b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(margin.left, margin.top, pw, ph);
 }
 
 fieldCtx.fillStyle = '#0a1520';
 fieldCtx.fillRect(0, 0, fieldCanvas.width, fieldCanvas.height);
 fieldCtx.fillStyle = '#4fc3f7';
-fieldCtx.font = '14px sans-serif';
-fieldCtx.fillText('Configure parameters and click Run', 100, 350);
+fieldCtx.font = '16px sans-serif';
+fieldCtx.textAlign = 'center';
+fieldCtx.fillText('Configure parameters and click Run Simulation', fieldCanvas.width / 2, fieldCanvas.height / 2 - 10);
+fieldCtx.fillStyle = '#7a8fa6';
+fieldCtx.font = '13px sans-serif';
+fieldCtx.fillText('The simulation domain will appear here', fieldCanvas.width / 2, fieldCanvas.height / 2 + 16);
