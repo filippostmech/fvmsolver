@@ -1057,15 +1057,23 @@ class CFDSolver:
 
         swell_ratios = []
         for j in range(nozzle_z_start - 1, max(int(nozzle_z_start) - 21, -1), -1):
+            found = False
             for i in range(self.nr - 1, -1, -1):
                 if self.alpha[i, j] > 0.5:
-                    swell_ratios.append(g.r_centers[i] / self.nozzle_radius)
+                    swell_ratios.append(max(g.r_centers[i] / self.nozzle_radius, 0.0))
+                    found = True
                     break
-            else:
-                swell_ratios.append(0.0)
+            if not found:
+                if len(swell_ratios) > 0:
+                    swell_ratios.append(swell_ratios[-1])
+                else:
+                    swell_ratios.append(1.0)
 
-        p_inlet = np.mean(self.p[:, -1])
-        p_outlet = np.mean(self.p[:, 0])
+        nozzle_r_idx = min(np.searchsorted(g.r_faces, self.nozzle_radius), self.nr)
+        p_nozzle_cells = self.p[:nozzle_r_idx, -1]
+        p_inlet = np.mean(p_nozzle_cells) if len(p_nozzle_cells) > 0 else 0.0
+        p_outlet_cells = self.p[:nozzle_r_idx, 0]
+        p_outlet = np.mean(p_outlet_cells) if len(p_outlet_cells) > 0 else 0.0
 
         centerline_T = self.T[0, :].tolist()
 
@@ -1094,6 +1102,8 @@ class CFDSolver:
 
     def get_frame_data(self):
         u_mag = np.sqrt(self.ur**2 + self.uz**2)
+        u_mag_masked = u_mag.copy()
+        u_mag_masked[self.alpha < 0.5] = 0.0
         g = self.grid
 
         contour_r = []
@@ -1120,7 +1130,7 @@ class CFDSolver:
 
         result = {
             'alpha': self.alpha.tolist(),
-            'u_mag': u_mag.tolist(),
+            'u_mag': u_mag_masked.tolist(),
             'T': self.T.tolist(),
             'p': self.p.tolist(),
             'eta': self.eta.tolist(),

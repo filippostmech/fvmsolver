@@ -402,15 +402,24 @@ function renderField(frame) {
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.fillText('flow', arrowX + 18, (arrowY1 + arrowY2) / 2 + 4);
 
+        const nozzleExitY = nozzleYPx - 10;
         ctx.fillStyle = 'rgba(255, 171, 64, 0.8)';
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('Nozzle Exit', centerX + nozzleRPx + wallThick + outerExtend - 2, nozzleYPx - 10);
+        ctx.fillText('Nozzle Exit', centerX + nozzleRPx + wallThick + outerExtend - 2, nozzleExitY);
 
+        const spaceBelow = margin.top + plotH - nozzleYPx;
+        const minSep = 22;
+        let extrudateY = nozzleYPx + spaceBelow * 0.3;
+        if (extrudateY - nozzleExitY < minSep) {
+            extrudateY = nozzleExitY + minSep;
+        }
+        if (extrudateY > margin.top + plotH - 10) {
+            extrudateY = margin.top + plotH - 10;
+        }
         ctx.fillStyle = 'rgba(120, 180, 255, 0.6)';
         ctx.font = '11px sans-serif';
         ctx.textAlign = 'left';
-        const extrudateY = nozzleYPx + (margin.top + plotH - nozzleYPx) * 0.3;
         ctx.fillText('Extrudate', centerX + nozzleRPx + wallThick + 6, extrudateY);
 
         ctx.fillStyle = 'rgba(100, 160, 220, 0.4)';
@@ -613,12 +622,30 @@ function renderColorbar(fmin, fmax, fieldName) {
     const info = FIELD_INFO[fieldName] || { title: fieldName, unit: '', fmt: v => v.toFixed(3) };
 
     ctx.fillStyle = '#4fc3f7';
-    ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'left';
 
-    const titleLines = info.title.split(' - ');
+    function wrapText(text, maxWidth) {
+        const words = text.split(/[\s\-]+/);
+        const lines = [];
+        let current = words[0] || '';
+        for (let i = 1; i < words.length; i++) {
+            const test = current + ' ' + words[i];
+            if (ctx.measureText(test).width > maxWidth) {
+                lines.push(current);
+                current = words[i];
+            } else {
+                current = test;
+            }
+        }
+        lines.push(current);
+        return lines;
+    }
+
+    ctx.font = 'bold 11px sans-serif';
+    const titleMaxW = cw - barX - 4;
+    const titleLines = wrapText(info.title, titleMaxW);
     titleLines.forEach((line, idx) => {
-        ctx.fillText(line, barX, marginTop - 12 - (titleLines.length - 1 - idx) * 14);
+        ctx.fillText(line, barX, marginTop - 6 - (titleLines.length - 1 - idx) * 13);
     });
 
     if (fieldName === 'alpha') {
@@ -771,14 +798,26 @@ function drawLinePlot(canvasId, xVals, yVals, xlabel, ylabel, color, unit) {
 
     if (!yVals || yVals.length === 0) return;
 
+    const filteredX = [];
+    const filteredY = [];
+    for (let i = 0; i < yVals.length; i++) {
+        if (isFinite(yVals[i]) && !isNaN(yVals[i])) {
+            filteredX.push(xVals ? xVals[i] : i);
+            filteredY.push(yVals[i]);
+        }
+    }
+    if (filteredY.length === 0) return;
+
     const margin = { top: 20, right: 20, bottom: 35, left: 70 };
     const pw = cw - margin.left - margin.right;
     const ph = ch - margin.top - margin.bottom;
 
     if (!xVals) {
-        xVals = [];
-        for (let i = 0; i < yVals.length; i++) xVals.push(i);
+        xVals = filteredX;
+    } else {
+        xVals = filteredX;
     }
+    yVals = filteredY;
 
     let xmin = Math.min(...xVals);
     let xmax = Math.max(...xVals);
