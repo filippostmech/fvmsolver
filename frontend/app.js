@@ -53,10 +53,41 @@ function engFormatPa(val) {
     return val.toFixed(1) + ' Pa';
 }
 
+function autoCalculateSteps() {
+    const gapMM = parseFloat(document.getElementById('nozzle_bed_gap').value);
+    const flowRateMM3 = parseFloat(document.getElementById('flow_rate').value);
+    const diamMM = parseFloat(document.getElementById('nozzle_diameter').value);
+    const dt = parseFloat(document.getElementById('dt').value);
+
+    const gapM = gapMM * 1e-3;
+    const flowRateM3 = flowRateMM3 * 1e-9;
+    const radiusM = (diamMM * 1e-3) / 2;
+    const area = Math.PI * radiusM * radiusM;
+    const uMean = flowRateM3 / area;
+    const uMax = 2.0 * uMean;
+
+    const tTravel = gapM / uMax;
+    const tTotal = tTravel * 1.3;
+    const steps = Math.ceil(tTotal / dt);
+    const rounded = Math.ceil(steps / 500) * 500;
+
+    document.getElementById('n_steps').value = rounded;
+    const fpu = Math.max(1, Math.ceil(rounded / 100));
+    document.getElementById('frames_per_update').value = fpu;
+}
+
+document.getElementById('nozzle_bed_gap').addEventListener('change', autoCalculateSteps);
+document.getElementById('flow_rate').addEventListener('change', autoCalculateSteps);
+document.getElementById('nozzle_diameter').addEventListener('change', autoCalculateSteps);
+document.getElementById('dt').addEventListener('change', autoCalculateSteps);
+autoCalculateSteps();
+
 function getConfig() {
+    const gapMM = parseFloat(document.getElementById('nozzle_bed_gap').value);
     return {
         nozzle_diameter: parseFloat(document.getElementById('nozzle_diameter').value) * 1e-3,
         nozzle_length: parseFloat(document.getElementById('nozzle_length').value) * 1e-3,
+        nozzle_bed_gap: gapMM * 1e-3,
         flow_rate: parseFloat(document.getElementById('flow_rate').value) * 1e-9,
         T_nozzle: parseFloat(document.getElementById('T_nozzle').value) + 273.15,
         T_ambient: parseFloat(document.getElementById('T_ambient').value) + 273.15,
@@ -180,7 +211,7 @@ function updateSimInfo(diag) {
     simInfoRight.textContent = `Step ${diag.step} | t = ${timeStr} | CFL = ${diag.cfl.toFixed(4)}`;
 }
 
-function colormap(t) {
+function colormapRainbow(t) {
     t = Math.max(0, Math.min(1, t));
 
     let r, g, b;
@@ -211,6 +242,21 @@ function colormap(t) {
         b = Math.floor(20 + s * 20);
     }
     return `rgb(${r},${g},${b})`;
+}
+
+function colormapVOF(t) {
+    t = Math.max(0, Math.min(1, t));
+    const r = Math.floor(210 * t + 30 * (1 - t));
+    const g = Math.floor(40 * t + 50 * (1 - t));
+    const b = Math.floor(40 * t + 210 * (1 - t));
+    return `rgb(${r},${g},${b})`;
+}
+
+function colormap(t, fieldName) {
+    if (fieldName === 'alpha') {
+        return colormapVOF(t);
+    }
+    return colormapRainbow(t);
 }
 
 function renderField(frame) {
@@ -259,7 +305,7 @@ function renderField(frame) {
         for (let j = 0; j < nz; j++) {
             const v = data[i][j];
             const t = (v - fmin) / (fmax - fmin);
-            const col = colormap(t);
+            const col = colormap(t, fieldName);
 
             const x_right = centerX + i * cellW;
             const x_left = centerX - (i + 1) * cellW;
@@ -395,21 +441,34 @@ function renderField(frame) {
 
         points.sort((a, b) => a.y - b.y);
 
-        if (points.length > 1) {
+        function drawSmoothCurve(ctx, pts, getX) {
+            if (pts.length < 2) return;
             ctx.beginPath();
-            ctx.moveTo(points[0].x, points[0].y);
-            for (let k = 1; k < points.length; k++) {
-                ctx.lineTo(points[k].x, points[k].y);
-            }
-            ctx.stroke();
+            ctx.moveTo(getX(pts[0]), pts[0].y);
 
-            ctx.beginPath();
-            ctx.moveTo(points[0].xm, points[0].y);
-            for (let k = 1; k < points.length; k++) {
-                ctx.lineTo(points[k].xm, points[k].y);
+            if (pts.length === 2) {
+                ctx.lineTo(getX(pts[1]), pts[1].y);
+            } else {
+                for (let k = 0; k < pts.length - 1; k++) {
+                    const p0 = k > 0 ? pts[k - 1] : pts[k];
+                    const p1 = pts[k];
+                    const p2 = pts[k + 1];
+                    const p3 = k < pts.length - 2 ? pts[k + 2] : pts[k + 1];
+
+                    const cp1x = getX(p1) + (getX(p2) - getX(p0)) / 6;
+                    const cp1y = p1.y + (p2.y - p0.y) / 6;
+                    const cp2x = getX(p2) - (getX(p3) - getX(p1)) / 6;
+                    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+                    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, getX(p2), p2.y);
+                }
             }
             ctx.stroke();
         }
+
+        drawSmoothCurve(ctx, points, p => p.x);
+        drawSmoothCurve(ctx, points, p => p.xm);
+
         ctx.shadowBlur = 0;
     }
 
@@ -508,7 +567,7 @@ function renderColorbar(fmin, fmax, fieldName) {
 
     for (let y = 0; y < barH; y++) {
         const t = 1 - y / barH;
-        ctx.fillStyle = colormap(t);
+        ctx.fillStyle = colormap(t, fieldName);
         ctx.fillRect(barX, marginTop + y, barW, 1);
     }
 

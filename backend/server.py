@@ -18,6 +18,7 @@ simulations: Dict[str, dict] = {}
 class SimConfig(BaseModel):
     nozzle_diameter: float = 0.4e-3
     nozzle_length: float = 2.0e-3
+    nozzle_bed_gap: float = 3.0e-3
     flow_rate: float = 5e-9
     T_nozzle: float = 493.15
     T_ambient: float = 298.15
@@ -44,6 +45,7 @@ def run_simulation_sync(run_id: str, config: dict, n_steps: int, frames_per_upda
     solver_config = {
         'nozzle_diameter': config.get('nozzle_diameter', 0.4e-3),
         'nozzle_length': config.get('nozzle_length', 2.0e-3),
+        'domain_z_ext': config.get('nozzle_bed_gap', 3.0e-3),
         'flow_rate': config.get('flow_rate', 5e-9),
         'T_nozzle': config.get('T_nozzle', 493.15),
         'T_ambient': config.get('T_ambient', 298.15),
