@@ -37,12 +37,15 @@ main.py       - Entry point (uvicorn on port 5000)
 - **Boundary conditions**: Parabolic inlet velocity profile, no-slip walls, pressure outlet (p=0)
 
 ## Numerical Methods
-- Cell-centered FVM on structured axisymmetric grid
+- Cell-centered FVM on structured axisymmetric grid (uniform or stretched)
+- Non-uniform grid support: per-cell dr_arr[i], dz_arr[j] spacing arrays
+- Grid stretching: power-law radial (clusters near axis), two-sided power-law axial (clusters near nozzle exit z=0)
 - Conservative flux formulation using 2*pi*r face areas and pi*(r_e^2 - r_w^2) annular areas
+- All gradient/diffusion calculations use local cell-center distances for non-uniform grids
 - Upwind advection for momentum, energy, and VOF
-- Projection method for pressure-velocity coupling with Jacobi pressure Poisson solver
+- Projection method for pressure-velocity coupling with SOR pressure Poisson solver
 - VOF compression term for interface sharpening
-- Adaptive CFL-based timestep
+- Adaptive CFL-based timestep (uses minimum cell spacing for CFL)
 - Hoop stress term (eta*ur/r^2) in radial momentum
 - NaN/Inf clamping as safety net
 - Empty-domain initialization: polymer enters from inlet boundary only (no pre-filling)
@@ -57,16 +60,15 @@ main.py       - Entry point (uvicorn on port 5000)
 - Smooth contour lines preferred over jagged marching-squares output
 
 ## Recent Changes
-- Added Nozzle-Bed Gap (mm) input to UI with auto-calculated simulation steps
-- Auto-step formula: steps = ceil(1.3 * gap / u_max / dt), rounded to nearest 500
+- Non-uniform grid stretching: grid.py supports power-law stretching in r (cluster near axis) and z (cluster near nozzle exit)
+- All Numba-accelerated FVM functions updated from scalar dr/dz to per-cell dr_arr[i]/dz_arr[j] spacing arrays
+- Gradient calculations use cell-center distances: r_centers[i+1]-r_centers[i] for r, z_centers-based for z
+- Diffusion coefficients use local face distances instead of uniform spacing
+- Pressure Poisson solver uses non-uniform Laplacian stencil with dr_arr and dz_arr
+- UI: Grid Type dropdown (Uniform/Stretched) and Stretch Ratio slider (1.0-3.0)
+- Frontend renders non-uniform cells using r_faces/z_faces arrays for correct pixel mapping
+- Frame data now includes r_faces and z_faces arrays for visualization
+- Contour interpolation uses cell-center distances instead of uniform dr/dz
 - Binary VOF colormap: solid red (polymer, alpha>=0.5) / solid blue (air, alpha<0.5) with sharp cutoff
-- Rainbow colormap preserved for temperature, velocity, pressure fields
 - Smooth free surface contour using Catmull-Rom spline (cubic Bezier) interpolation
-- Closed contour loop: right side → front tip → left side with closePath(), using both radial and axial alpha=0.5 crossings
-- Added print bed wall BC at j=0: no-slip (uz=0, ur=0), zero-gradient temperature
-- Near-bed momentum solve with viscous diffusion for polymer spreading on print bed
-- Moved pressure reference from j=0 row to far-field air corner (single Dirichlet point)
-- Hybrid velocity approach: prescribed Poiseuille profile inside nozzle, plug flow extension in extrudate
-- Air region (alpha < 0.01) gets zero velocity to avoid density-ratio instability
-- Inlet BC at j=nz-1 (top), print bed wall at j=0 (bottom)
-- Simulation runs 8000 steps stably with clean velocity profiles (uz ∈ [-0.08, 0.002] m/s)
+- Simulation runs stably with both uniform and stretched grids

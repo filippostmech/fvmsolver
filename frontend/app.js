@@ -27,6 +27,11 @@ fieldSelect.addEventListener('change', () => { if (latestFrame) renderField(late
 document.getElementById('show-contour').addEventListener('change', () => { if (latestFrame) renderField(latestFrame); });
 document.getElementById('show-nozzle').addEventListener('change', () => { if (latestFrame) renderField(latestFrame); });
 
+document.getElementById('stretch_type').addEventListener('change', function() {
+    const label = document.getElementById('stretch_ratio_label');
+    label.style.display = this.value === 'stretched' ? '' : 'none';
+});
+
 const FIELD_INFO = {
     alpha: { title: 'VOF - Polymer Volume Fraction', unit: '', fmt: v => v.toFixed(3) },
     u_mag: { title: 'Velocity Magnitude', unit: 'm/s', fmt: v => engFormat(v) },
@@ -101,6 +106,8 @@ function getConfig() {
         sigma: parseFloat(document.getElementById('sigma').value),
         nr: parseInt(document.getElementById('nr').value),
         nz: parseInt(document.getElementById('nz').value),
+        stretch_type: document.getElementById('stretch_type').value,
+        stretch_ratio: parseFloat(document.getElementById('stretch_ratio').value),
         dt: parseFloat(document.getElementById('dt').value),
         n_steps: parseInt(document.getElementById('n_steps').value),
         frames_per_update: parseInt(document.getElementById('frames_per_update').value),
@@ -297,10 +304,14 @@ function renderField(frame) {
     const plotH = ch - margin.top - margin.bottom;
     const halfW = plotW / 2;
 
-    const cellW = halfW / nr;
-    const cellH = plotH / nz;
-
     const centerX = margin.left + halfW;
+
+    const hasRFaces = frame.r_faces && frame.r_faces.length > 0;
+    const hasZFaces = frame.z_faces && frame.z_faces.length > 0;
+    const rMax = hasRFaces ? frame.r_faces[frame.r_faces.length - 1] : (frame.r_centers[nr - 1] + (frame.r_centers[1] - frame.r_centers[0]) * 0.5);
+    const zMin = hasZFaces ? frame.z_faces[0] : frame.z_centers[0];
+    const zMax = hasZFaces ? frame.z_faces[frame.z_faces.length - 1] : frame.z_centers[nz - 1];
+    const zRange = zMax - zMin;
 
     for (let i = 0; i < nr; i++) {
         for (let j = 0; j < nz; j++) {
@@ -308,20 +319,35 @@ function renderField(frame) {
             const t = (v - fmin) / (fmax - fmin);
             const col = (fieldName === 'alpha') ? colormapVOF(v) : colormap(t, fieldName);
 
-            const x_right = centerX + i * cellW;
-            const x_left = centerX - (i + 1) * cellW;
-            const y = margin.top + (nz - 1 - j) * cellH;
+            let r0, r1, z0, z1;
+            if (hasRFaces) {
+                r0 = frame.r_faces[i];
+                r1 = frame.r_faces[i + 1];
+            } else {
+                const cellW = halfW / nr;
+                r0 = i * rMax / nr;
+                r1 = (i + 1) * rMax / nr;
+            }
+            if (hasZFaces) {
+                z0 = frame.z_faces[j];
+                z1 = frame.z_faces[j + 1];
+            } else {
+                z0 = zMin + j * zRange / nz;
+                z1 = zMin + (j + 1) * zRange / nz;
+            }
+
+            const px_r0 = (r0 / rMax) * halfW;
+            const px_r1 = (r1 / rMax) * halfW;
+            const py_top = margin.top + (1 - (z1 - zMin) / zRange) * plotH;
+            const py_bot = margin.top + (1 - (z0 - zMin) / zRange) * plotH;
+            const cellPxW = px_r1 - px_r0;
+            const cellPxH = py_bot - py_top;
 
             ctx.fillStyle = col;
-            ctx.fillRect(x_right, y, cellW + 0.5, cellH + 0.5);
-            ctx.fillRect(x_left, y, cellW + 0.5, cellH + 0.5);
+            ctx.fillRect(centerX + px_r0, py_top, cellPxW + 0.5, cellPxH + 0.5);
+            ctx.fillRect(centerX - px_r1, py_top, cellPxW + 0.5, cellPxH + 0.5);
         }
     }
-
-    const rMax = frame.r_centers[nr - 1] + (frame.r_centers[1] - frame.r_centers[0]) * 0.5;
-    const zMin = frame.z_centers[0];
-    const zMax = frame.z_centers[nz - 1];
-    const zRange = zMax - zMin;
 
     const showNozzle = document.getElementById('show-nozzle').checked;
 

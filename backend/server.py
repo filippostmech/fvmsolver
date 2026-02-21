@@ -37,6 +37,8 @@ class SimConfig(BaseModel):
     gravity: float = -9.81
     n_steps: int = 8000
     frames_per_update: int = 80
+    stretch_type: str = 'uniform'
+    stretch_ratio: float = 1.5
 
 
 def run_simulation_sync(run_id: str, config: dict, n_steps: int, frames_per_update: int):
@@ -55,6 +57,8 @@ def run_simulation_sync(run_id: str, config: dict, n_steps: int, frames_per_upda
         'h_conv': config.get('h_conv', 10.0),
         'gravity': config.get('gravity', -9.81),
         'c_alpha': config.get('c_alpha', 1.0),
+        'stretch_type': config.get('stretch_type', 'uniform'),
+        'stretch_ratio': config.get('stretch_ratio', 1.5),
         'material': {
             'eta_0': config.get('eta_0', 3000.0),
             'eta_inf': config.get('eta_inf', 50.0),

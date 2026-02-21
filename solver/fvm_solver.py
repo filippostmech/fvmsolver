@@ -34,7 +34,7 @@ def sanitize_dict(d):
 
 
 @njit(cache=True)
-def compute_velocity_gradients(ur, uz, nr, nz, dr, dz):
+def compute_velocity_gradients(ur, uz, nr, nz, r_centers, z_centers):
     dur_dr = np.zeros((nr, nz))
     dur_dz = np.zeros((nr, nz))
     duz_dr = np.zeros((nr, nz))
@@ -43,24 +43,32 @@ def compute_velocity_gradients(ur, uz, nr, nz, dr, dz):
     for i in range(nr):
         for j in range(nz):
             if i == 0:
-                dur_dr[i, j] = (ur[1, j] - ur[0, j]) / dr if nr > 1 else 0.0
-                duz_dr[i, j] = (uz[1, j] - uz[0, j]) / dr if nr > 1 else 0.0
+                if nr > 1:
+                    dr_f = r_centers[1] - r_centers[0]
+                    dur_dr[i, j] = (ur[1, j] - ur[0, j]) / dr_f
+                    duz_dr[i, j] = (uz[1, j] - uz[0, j]) / dr_f
             elif i == nr - 1:
-                dur_dr[i, j] = (ur[i, j] - ur[i - 1, j]) / dr
-                duz_dr[i, j] = (uz[i, j] - uz[i - 1, j]) / dr
+                dr_b = r_centers[i] - r_centers[i - 1]
+                dur_dr[i, j] = (ur[i, j] - ur[i - 1, j]) / dr_b
+                duz_dr[i, j] = (uz[i, j] - uz[i - 1, j]) / dr_b
             else:
-                dur_dr[i, j] = (ur[i + 1, j] - ur[i - 1, j]) / (2.0 * dr)
-                duz_dr[i, j] = (uz[i + 1, j] - uz[i - 1, j]) / (2.0 * dr)
+                dr_c = r_centers[i + 1] - r_centers[i - 1]
+                dur_dr[i, j] = (ur[i + 1, j] - ur[i - 1, j]) / dr_c
+                duz_dr[i, j] = (uz[i + 1, j] - uz[i - 1, j]) / dr_c
 
             if j == 0:
-                dur_dz[i, j] = (ur[i, 1] - ur[i, 0]) / dz if nz > 1 else 0.0
-                duz_dz[i, j] = (uz[i, 1] - uz[i, 0]) / dz if nz > 1 else 0.0
+                if nz > 1:
+                    dz_f = z_centers[1] - z_centers[0]
+                    dur_dz[i, j] = (ur[i, 1] - ur[i, 0]) / dz_f
+                    duz_dz[i, j] = (uz[i, 1] - uz[i, 0]) / dz_f
             elif j == nz - 1:
-                dur_dz[i, j] = (ur[i, j] - ur[i, j - 1]) / dz
-                duz_dz[i, j] = (uz[i, j] - uz[i, j - 1]) / dz
+                dz_b = z_centers[j] - z_centers[j - 1]
+                dur_dz[i, j] = (ur[i, j] - ur[i, j - 1]) / dz_b
+                duz_dz[i, j] = (uz[i, j] - uz[i, j - 1]) / dz_b
             else:
-                dur_dz[i, j] = (ur[i, j + 1] - ur[i, j - 1]) / (2.0 * dz)
-                duz_dz[i, j] = (uz[i, j + 1] - uz[i, j - 1]) / (2.0 * dz)
+                dz_c = z_centers[j + 1] - z_centers[j - 1]
+                dur_dz[i, j] = (ur[i, j + 1] - ur[i, j - 1]) / dz_c
+                duz_dz[i, j] = (uz[i, j + 1] - uz[i, j - 1]) / dz_c
 
     return dur_dr, dur_dz, duz_dr, duz_dz
 
@@ -101,7 +109,7 @@ def compute_viscosity_field(gamma_dot, T, alpha, nr, nz,
 
 @njit(cache=True)
 def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
-                          r_centers, r_faces, dr, dz, nr, nz,
+                          r_centers, r_faces, dz_arr, nr, nz,
                           gravity, f_st_r, f_st_z, dt, rho_floor):
     ur_star = ur.copy()
     uz_star = uz.copy()
@@ -124,9 +132,10 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
                 rho_c = max(rho[i, j], rho_floor)
                 r_e = r_faces[i + 1]
                 r_w = r_faces[i]
-                V = np.pi * (r_e**2 - r_w**2) * dz
-                A_e = 2.0 * np.pi * r_e * dz
-                A_w = 2.0 * np.pi * r_w * dz
+                dz_j = dz_arr[j]
+                V = np.pi * (r_e**2 - r_w**2) * dz_j
+                A_e = 2.0 * np.pi * r_e * dz_j
+                A_w = 2.0 * np.pi * r_w * dz_j
                 A_n = np.pi * (r_e**2 - r_w**2)
                 A_s = A_n
 
@@ -141,18 +150,18 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
 
                 dp_dr = 0.0
                 if i > 0 and i < nr - 1:
-                    dp_dr = (p_old[i + 1, j] - p_old[i - 1, j]) / (2.0 * dr)
+                    dp_dr = (p_old[i + 1, j] - p_old[i - 1, j]) / (r_centers[i + 1] - r_centers[i - 1])
                 elif i == 0 and nr > 1:
-                    dp_dr = (p_old[1, j] - p_old[0, j]) / dr
+                    dp_dr = (p_old[1, j] - p_old[0, j]) / (r_centers[1] - r_centers[0])
                 elif i == nr - 1:
-                    dp_dr = (p_old[i, j] - p_old[i - 1, j]) / dr
+                    dp_dr = (p_old[i, j] - p_old[i - 1, j]) / (r_centers[i] - r_centers[i - 1])
                 dp_dz = 0.0
                 if j > 0 and j < nz - 1:
-                    dp_dz = (p_old[i, j + 1] - p_old[i, j - 1]) / (2.0 * dz)
+                    dp_dz = (p_old[i, j + 1] - p_old[i, j - 1]) / (dz_arr[j] + 0.5 * (dz_arr[j - 1] + dz_arr[j + 1]))
                 elif j == 0 and nz > 1:
-                    dp_dz = (p_old[i, j + 1] - p_old[i, j]) / dz
+                    dp_dz = (p_old[i, j + 1] - p_old[i, j]) / (0.5 * (dz_arr[j] + dz_arr[j + 1]))
                 elif j == nz - 1 and nz > 1:
-                    dp_dz = (p_old[i, j] - p_old[i, j - 1]) / dz
+                    dp_dz = (p_old[i, j] - p_old[i, j - 1]) / (0.5 * (dz_arr[j - 1] + dz_arr[j]))
                 b_r -= dp_dr * V
                 b_z -= dp_dz * V
 
@@ -162,7 +171,8 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
                     mdot_e = rho_e * ur_e * A_e
                     F_e = max(mdot_e, 0.0)
                     eta_e = 0.5 * (eta[i, j] + eta[i + 1, j])
-                    D_e = eta_e * A_e / dr
+                    dr_e = r_centers[i + 1] - r_centers[i]
+                    D_e = eta_e * A_e / dr_e
                     a_diag_r += F_e + D_e
                     a_diag_z += F_e + D_e
                     a_nb_r = max(-mdot_e, 0.0) + D_e
@@ -176,7 +186,8 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
                     mdot_w = rho_w * ur_w * A_w
                     F_w = max(-mdot_w, 0.0)
                     eta_w = 0.5 * (eta[i - 1, j] + eta[i, j])
-                    D_w = eta_w * A_w / dr
+                    dr_w = r_centers[i] - r_centers[i - 1]
+                    D_w = eta_w * A_w / dr_w
                     a_diag_r += F_w + D_w
                     a_diag_z += F_w + D_w
                     a_nb_r = max(mdot_w, 0.0) + D_w
@@ -184,7 +195,8 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
                     b_r += a_nb_r * ur_star[i - 1, j]
                     b_z += a_nb_z * uz_star[i - 1, j]
                 elif i == 0:
-                    D_w_sym = eta[i, j] * A_w / (0.5 * dr)
+                    dr_half = r_centers[0]
+                    D_w_sym = eta[i, j] * A_w / max(dr_half, 1e-12)
                     a_diag_r += D_w_sym
 
                 if j < nz - 1 and alpha[i, j + 1] >= alpha_thresh:
@@ -193,7 +205,8 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
                     mdot_n = rho_n * uz_n * A_n
                     F_n = max(mdot_n, 0.0)
                     eta_n = 0.5 * (eta[i, j] + eta[i, j + 1])
-                    D_n = eta_n * A_n / dz
+                    dz_n = 0.5 * (dz_arr[j] + dz_arr[j + 1])
+                    D_n = eta_n * A_n / dz_n
                     a_diag_r += F_n + D_n
                     a_diag_z += F_n + D_n
                     a_nb_r = max(-mdot_n, 0.0) + D_n
@@ -207,7 +220,8 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
                     mdot_s = rho_s * uz_s * A_s
                     F_s = max(-mdot_s, 0.0)
                     eta_s = 0.5 * (eta[i, j - 1] + eta[i, j])
-                    D_s = eta_s * A_s / dz
+                    dz_s = 0.5 * (dz_arr[j - 1] + dz_arr[j])
+                    D_s = eta_s * A_s / dz_s
                     a_diag_r += F_s + D_s
                     a_diag_z += F_s + D_s
                     a_nb_r = max(mdot_s, 0.0) + D_s
@@ -241,7 +255,7 @@ def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
 
 
 @njit(cache=True)
-def compute_divergence_axisym(ur, uz, r_centers, r_faces, dr, dz, nr, nz):
+def compute_divergence_axisym(ur, uz, r_centers, r_faces, dr_arr, dz_arr, nr, nz):
     div = np.zeros((nr, nz))
     for i in range(nr):
         for j in range(nz):
@@ -259,7 +273,7 @@ def compute_divergence_axisym(ur, uz, r_centers, r_faces, dr, dz, nr, nz):
             else:
                 ur_w = 0.0
 
-            div_r = (r_e * ur_e - r_w * ur_w) / (r_c * dr)
+            div_r = (r_e * ur_e - r_w * ur_w) / (r_c * dr_arr[i])
 
             if j < nz - 1:
                 uz_n = 0.5 * (uz[i, j] + uz[i, j + 1])
@@ -271,14 +285,14 @@ def compute_divergence_axisym(ur, uz, r_centers, r_faces, dr, dz, nr, nz):
             else:
                 uz_s = uz[i, j]
 
-            div_z = (uz_n - uz_s) / dz
+            div_z = (uz_n - uz_s) / dz_arr[j]
             div[i, j] = div_r + div_z
 
     return div
 
 
 @njit(cache=True)
-def advect_vof_axisym(alpha, ur, uz, r_centers, r_faces, dr, dz, nr, nz, dt):
+def advect_vof_axisym(alpha, ur, uz, r_centers, r_faces, dz_arr, nr, nz, dt):
     alpha_new = alpha.copy()
 
     for i in range(nr):
@@ -286,12 +300,13 @@ def advect_vof_axisym(alpha, ur, uz, r_centers, r_faces, dr, dz, nr, nz, dt):
             r_c = max(r_centers[i], 1e-12)
             r_e = r_faces[i + 1]
             r_w = r_faces[i]
-            V = np.pi * (r_e**2 - r_w**2) * dz
+            dz_j = dz_arr[j]
+            V = np.pi * (r_e**2 - r_w**2) * dz_j
 
             flux_e = 0.0
             if i < nr - 1:
                 ur_e = 0.5 * (ur[i, j] + ur[i + 1, j])
-                A_e = 2.0 * np.pi * r_e * dz
+                A_e = 2.0 * np.pi * r_e * dz_j
                 if ur_e >= 0:
                     flux_e = ur_e * alpha[i, j] * A_e
                 else:
@@ -300,7 +315,7 @@ def advect_vof_axisym(alpha, ur, uz, r_centers, r_faces, dr, dz, nr, nz, dt):
             flux_w = 0.0
             if i > 0:
                 ur_w = 0.5 * (ur[i - 1, j] + ur[i, j])
-                A_w = 2.0 * np.pi * r_w * dz
+                A_w = 2.0 * np.pi * r_w * dz_j
                 if ur_w >= 0:
                     flux_w = ur_w * alpha[i - 1, j] * A_w
                 else:
@@ -336,28 +351,29 @@ def advect_vof_axisym(alpha, ur, uz, r_centers, r_faces, dr, dz, nr, nz, dt):
 
 
 @njit(cache=True)
-def apply_vof_compression(alpha, ur, uz, r_centers, r_faces, dr, dz, nr, nz, dt, c_alpha):
+def apply_vof_compression(alpha, ur, uz, r_centers, r_faces, dz_arr, nr, nz, dt, c_alpha):
     alpha_new = alpha.copy()
 
     for i in range(nr):
         for j in range(nz):
             r_c = max(r_centers[i], 1e-12)
+            dr_i = r_faces[i + 1] - r_faces[i]
 
             grad_a_r = 0.0
             grad_a_z = 0.0
             if i > 0 and i < nr - 1:
-                grad_a_r = (alpha[i + 1, j] - alpha[i - 1, j]) / (2.0 * dr)
+                grad_a_r = (alpha[i + 1, j] - alpha[i - 1, j]) / (r_centers[i + 1] - r_centers[i - 1])
             elif i == 0 and nr > 1:
-                grad_a_r = (alpha[1, j] - alpha[0, j]) / dr
+                grad_a_r = (alpha[1, j] - alpha[0, j]) / (r_centers[1] - r_centers[0])
             elif i == nr - 1:
-                grad_a_r = (alpha[i, j] - alpha[i - 1, j]) / dr
+                grad_a_r = (alpha[i, j] - alpha[i - 1, j]) / (r_centers[i] - r_centers[i - 1])
 
             if j > 0 and j < nz - 1:
-                grad_a_z = (alpha[i, j + 1] - alpha[i, j - 1]) / (2.0 * dz)
+                grad_a_z = (alpha[i, j + 1] - alpha[i, j - 1]) / (0.5 * (dz_arr[j - 1] + dz_arr[j]) + 0.5 * (dz_arr[j] + dz_arr[j + 1]))
             elif j == 0 and nz > 1:
-                grad_a_z = (alpha[i, j + 1] - alpha[i, j]) / dz
+                grad_a_z = (alpha[i, j + 1] - alpha[i, j]) / (0.5 * (dz_arr[j] + dz_arr[j + 1]))
             elif j == nz - 1:
-                grad_a_z = (alpha[i, j] - alpha[i, j - 1]) / dz
+                grad_a_z = (alpha[i, j] - alpha[i, j - 1]) / (0.5 * (dz_arr[j - 1] + dz_arr[j]))
 
             mag_grad = np.sqrt(grad_a_r**2 + grad_a_z**2)
             if mag_grad < 1e-10:
@@ -376,17 +392,18 @@ def apply_vof_compression(alpha, ur, uz, r_centers, r_faces, dr, dz, nr, nz, dt,
             flux_comp = 0.0
             if i < nr - 1:
                 comp_e = 0.5 * (comp_term + alpha[i + 1, j] * (1.0 - alpha[i + 1, j]))
-                flux_comp += u_comp_r * comp_e * r_faces[i + 1] / (r_c * dr)
+                flux_comp += u_comp_r * comp_e * r_faces[i + 1] / (r_c * dr_i)
             if i > 0:
                 comp_w = 0.5 * (alpha[i - 1, j] * (1.0 - alpha[i - 1, j]) + comp_term)
-                flux_comp -= u_comp_r * comp_w * r_faces[i] / (r_c * dr)
+                flux_comp -= u_comp_r * comp_w * r_faces[i] / (r_c * dr_i)
 
+            dz_j = dz_arr[j]
             if j < nz - 1:
                 comp_n = 0.5 * (comp_term + alpha[i, j + 1] * (1.0 - alpha[i, j + 1]))
-                flux_comp += u_comp_z * comp_n / dz
+                flux_comp += u_comp_z * comp_n / dz_j
             if j > 0:
                 comp_s = 0.5 * (alpha[i, j - 1] * (1.0 - alpha[i, j - 1]) + comp_term)
-                flux_comp -= u_comp_z * comp_s / dz
+                flux_comp -= u_comp_z * comp_s / dz_j
 
             alpha_new[i, j] = min(max(alpha[i, j] + dt * flux_comp, 0.0), 1.0)
 
@@ -394,7 +411,7 @@ def apply_vof_compression(alpha, ur, uz, r_centers, r_faces, dr, dz, nr, nz, dt,
 
 
 @njit(cache=True)
-def compute_csf_force(alpha, sigma, r_centers, dr, dz, nr, nz):
+def compute_csf_force(alpha, sigma, r_centers, r_faces, dz_arr, nr, nz):
     f_r = np.zeros((nr, nz))
     f_z = np.zeros((nr, nz))
 
@@ -403,18 +420,19 @@ def compute_csf_force(alpha, sigma, r_centers, dr, dz, nr, nz):
     for i in range(nr):
         for j in range(nz):
             if i > 0 and i < nr - 1:
-                grad_a_r[i, j] = (alpha[i + 1, j] - alpha[i - 1, j]) / (2.0 * dr)
+                grad_a_r[i, j] = (alpha[i + 1, j] - alpha[i - 1, j]) / (r_centers[i + 1] - r_centers[i - 1])
             elif i == 0 and nr > 1:
-                grad_a_r[i, j] = (alpha[1, j] - alpha[0, j]) / dr
+                grad_a_r[i, j] = (alpha[1, j] - alpha[0, j]) / (r_centers[1] - r_centers[0])
             elif i == nr - 1:
-                grad_a_r[i, j] = (alpha[i, j] - alpha[i - 1, j]) / dr
+                grad_a_r[i, j] = (alpha[i, j] - alpha[i - 1, j]) / (r_centers[i] - r_centers[i - 1])
 
             if j > 0 and j < nz - 1:
-                grad_a_z[i, j] = (alpha[i, j + 1] - alpha[i, j - 1]) / (2.0 * dz)
+                dz_c = 0.5 * (dz_arr[j - 1] + dz_arr[j]) + 0.5 * (dz_arr[j] + dz_arr[j + 1])
+                grad_a_z[i, j] = (alpha[i, j + 1] - alpha[i, j - 1]) / dz_c
             elif j == 0 and nz > 1:
-                grad_a_z[i, j] = (alpha[i, j + 1] - alpha[i, j]) / dz
+                grad_a_z[i, j] = (alpha[i, j + 1] - alpha[i, j]) / (0.5 * (dz_arr[j] + dz_arr[j + 1]))
             elif j == nz - 1:
-                grad_a_z[i, j] = (alpha[i, j] - alpha[i, j - 1]) / dz
+                grad_a_z[i, j] = (alpha[i, j] - alpha[i, j - 1]) / (0.5 * (dz_arr[j - 1] + dz_arr[j]))
 
     for i in range(nr):
         for j in range(nz):
@@ -431,7 +449,7 @@ def compute_csf_force(alpha, sigma, r_centers, dr, dz, nr, nz):
                 mag_m = np.sqrt(grad_a_r[i - 1, j]**2 + grad_a_z[i - 1, j]**2)
                 n_r_p = grad_a_r[i + 1, j] / max(mag_p, 1e-10)
                 n_r_m = grad_a_r[i - 1, j] / max(mag_m, 1e-10)
-                dn_r_dr = (n_r_p - n_r_m) / (2.0 * dr)
+                dn_r_dr = (n_r_p - n_r_m) / (r_centers[i + 1] - r_centers[i - 1])
 
             dn_z_dz = 0.0
             if j > 0 and j < nz - 1:
@@ -439,7 +457,8 @@ def compute_csf_force(alpha, sigma, r_centers, dr, dz, nr, nz):
                 mag_m = np.sqrt(grad_a_r[i, j - 1]**2 + grad_a_z[i, j - 1]**2)
                 n_z_p = grad_a_z[i, j + 1] / max(mag_p, 1e-10)
                 n_z_m = grad_a_z[i, j - 1] / max(mag_m, 1e-10)
-                dn_z_dz = (n_z_p - n_z_m) / (2.0 * dz)
+                dz_c = 0.5 * (dz_arr[j - 1] + dz_arr[j]) + 0.5 * (dz_arr[j] + dz_arr[j + 1])
+                dn_z_dz = (n_z_p - n_z_m) / dz_c
 
             r_c = max(r_centers[i], 1e-12)
             kappa = -(dn_r_dr + n_r / r_c + dn_z_dz)
@@ -452,7 +471,7 @@ def compute_csf_force(alpha, sigma, r_centers, dr, dz, nr, nz):
 
 @njit(cache=True)
 def advect_temperature_axisym(T, ur, uz, rho, cp, k, r_centers, r_faces,
-                               dr, dz, nr, nz, dt, h_conv, T_amb, alpha):
+                               dz_arr, nr, nz, dt, h_conv, T_amb, alpha):
     T_new = T.copy()
 
     for i in range(nr):
@@ -461,10 +480,11 @@ def advect_temperature_axisym(T, ur, uz, rho, cp, k, r_centers, r_faces,
             r_e = r_faces[i + 1]
             r_w = r_faces[i]
             rho_cp = max(rho[i, j] * cp[i, j], 1e-10)
-            V = np.pi * (r_e**2 - r_w**2) * dz
+            dz_j = dz_arr[j]
+            V = np.pi * (r_e**2 - r_w**2) * dz_j
 
-            A_e = 2.0 * np.pi * r_e * dz
-            A_w = 2.0 * np.pi * r_w * dz
+            A_e = 2.0 * np.pi * r_e * dz_j
+            A_w = 2.0 * np.pi * r_w * dz_j
             A_z = np.pi * (r_e**2 - r_w**2)
 
             conv = 0.0
@@ -512,17 +532,21 @@ def advect_temperature_axisym(T, ur, uz, rho, cp, k, r_centers, r_faces,
             diff = 0.0
             if i < nr - 1:
                 k_e = 0.5 * (k[i, j] + k[i + 1, j])
-                diff += k_e * A_e * (T[i + 1, j] - T[i, j]) / dr
+                dr_e = r_centers[i + 1] - r_centers[i]
+                diff += k_e * A_e * (T[i + 1, j] - T[i, j]) / dr_e
             if i > 0:
                 k_w = 0.5 * (k[i - 1, j] + k[i, j])
-                diff -= k_w * A_w * (T[i, j] - T[i - 1, j]) / dr
+                dr_w = r_centers[i] - r_centers[i - 1]
+                diff -= k_w * A_w * (T[i, j] - T[i - 1, j]) / dr_w
 
             if j < nz - 1:
                 k_n = 0.5 * (k[i, j] + k[i, j + 1])
-                diff += k_n * A_z * (T[i, j + 1] - T[i, j]) / dz
+                dz_n = 0.5 * (dz_arr[j] + dz_arr[j + 1])
+                diff += k_n * A_z * (T[i, j + 1] - T[i, j]) / dz_n
             if j > 0:
                 k_s = 0.5 * (k[i, j - 1] + k[i, j])
-                diff -= k_s * A_z * (T[i, j] - T[i, j - 1]) / dz
+                dz_s = 0.5 * (dz_arr[j - 1] + dz_arr[j])
+                diff -= k_s * A_z * (T[i, j] - T[i, j - 1]) / dz_s
 
             cooling = 0.0
             if 0.01 < alpha[i, j] < 0.99:
@@ -535,7 +559,7 @@ def advect_temperature_axisym(T, ur, uz, rho, cp, k, r_centers, r_faces,
 
 
 @njit(cache=True)
-def _implicit_diffusion_solve(u, u_star, eta, rho, alpha, r_centers, r_faces, dr, dz, nr, nz, dt, rho_floor):
+def _implicit_diffusion_solve(u, u_star, eta, rho, alpha, r_centers, r_faces, dz_arr, nr, nz, dt, rho_floor):
     omega = 1.2
     alpha_thresh = 0.01
     for iteration in range(50):
@@ -548,10 +572,11 @@ def _implicit_diffusion_solve(u, u_star, eta, rho, alpha, r_centers, r_faces, dr
                 r_c = max(r_centers[i], 1e-12)
                 r_e = r_faces[i + 1]
                 r_w = r_faces[i]
-                V = np.pi * (r_e**2 - r_w**2) * dz
+                dz_j = dz_arr[j]
+                V = np.pi * (r_e**2 - r_w**2) * dz_j
                 rho_ij = max(rho[i, j], rho_floor)
-                A_e = 2.0 * np.pi * r_e * dz
-                A_w = 2.0 * np.pi * r_w * dz
+                A_e = 2.0 * np.pi * r_e * dz_j
+                A_w = 2.0 * np.pi * r_w * dz_j
                 A_n = np.pi * (r_e**2 - r_w**2)
                 A_s = A_n
 
@@ -560,23 +585,27 @@ def _implicit_diffusion_solve(u, u_star, eta, rho, alpha, r_centers, r_faces, dr
 
                 if i < nr - 1 and alpha[i + 1, j] >= alpha_thresh:
                     eta_e = 0.5 * (eta[i, j] + eta[i + 1, j])
-                    coeff = eta_e * A_e / dr
+                    dr_e = r_centers[i + 1] - r_centers[i]
+                    coeff = eta_e * A_e / dr_e
                     diag += coeff
                     rhs += coeff * u[i + 1, j]
                 if i > 0 and alpha[i - 1, j] >= alpha_thresh:
                     eta_w = 0.5 * (eta[i - 1, j] + eta[i, j])
-                    coeff = eta_w * A_w / dr
+                    dr_w = r_centers[i] - r_centers[i - 1]
+                    coeff = eta_w * A_w / dr_w
                     diag += coeff
                     rhs += coeff * u[i - 1, j]
 
                 if j < nz - 1 and alpha[i, j + 1] >= alpha_thresh:
                     eta_n = 0.5 * (eta[i, j] + eta[i, j + 1])
-                    coeff = eta_n * A_n / dz
+                    dz_n = 0.5 * (dz_arr[j] + dz_arr[j + 1])
+                    coeff = eta_n * A_n / dz_n
                     diag += coeff
                     rhs += coeff * u[i, j + 1]
                 if j > 0 and alpha[i, j - 1] >= alpha_thresh:
                     eta_s = 0.5 * (eta[i, j - 1] + eta[i, j])
-                    coeff = eta_s * A_s / dz
+                    dz_s = 0.5 * (dz_arr[j - 1] + dz_arr[j])
+                    coeff = eta_s * A_s / dz_s
                     diag += coeff
                     rhs += coeff * u[i, j - 1]
 
@@ -597,7 +626,7 @@ def _implicit_diffusion_solve(u, u_star, eta, rho, alpha, r_centers, r_faces, dr
 
 
 @njit(cache=True)
-def _sor_pressure_solve(p, div_star, rho, r_centers, r_faces, dr, dz, nr, nz, dt_sub, rho_floor):
+def _sor_pressure_solve(p, div_star, rho, r_centers, r_faces, dr_arr, dz_arr, nr, nz, dt_sub, rho_floor):
     omega = 1.5
     for iteration in range(500):
         max_resid = 0.0
@@ -615,27 +644,31 @@ def _sor_pressure_solve(p, div_star, rho, r_centers, r_faces, dr, dz, nr, nz, dt
                     rho_e = 0.5 * (rho[i, j] + rho[i + 1, j])
                     rho_e = max(rho_e, rho_floor)
                     r_e = r_faces[i + 1]
-                    coeff = r_e / (rho_e * r_c * dr**2)
+                    dr_e = r_centers[i + 1] - r_centers[i]
+                    coeff = r_e / (rho_e * r_c * dr_arr[i] * dr_e)
                     rhs += coeff * p[i + 1, j]
                     diag += coeff
                 if i > 0:
                     rho_w = 0.5 * (rho[i - 1, j] + rho[i, j])
                     rho_w = max(rho_w, rho_floor)
                     r_w = r_faces[i]
-                    coeff = r_w / (rho_w * r_c * dr**2)
+                    dr_w = r_centers[i] - r_centers[i - 1]
+                    coeff = r_w / (rho_w * r_c * dr_arr[i] * dr_w)
                     rhs += coeff * p[i - 1, j]
                     diag += coeff
 
                 if j < nz - 1:
                     rho_n = 0.5 * (rho[i, j] + rho[i, j + 1])
                     rho_n = max(rho_n, rho_floor)
-                    coeff = 1.0 / (rho_n * dz**2)
+                    dz_n = 0.5 * (dz_arr[j] + dz_arr[j + 1])
+                    coeff = 1.0 / (rho_n * dz_arr[j] * dz_n)
                     rhs += coeff * p[i, j + 1]
                     diag += coeff
                 if j > 0:
                     rho_s = 0.5 * (rho[i, j - 1] + rho[i, j])
                     rho_s = max(rho_s, rho_floor)
-                    coeff = 1.0 / (rho_s * dz**2)
+                    dz_s = 0.5 * (dz_arr[j - 1] + dz_arr[j])
+                    coeff = 1.0 / (rho_s * dz_arr[j] * dz_s)
                     rhs += coeff * p[i, j - 1]
                     diag += coeff
 
@@ -691,12 +724,16 @@ class CFDSolver:
         self.p_relax = c.get('p_relax', 0.3)
         self.u_relax = c.get('u_relax', 0.7)
 
+        self.stretch_type = c.get('stretch_type', 'uniform')
+        self.stretch_ratio = c.get('stretch_ratio', 1.5)
+
         from solver.materials import TPUMaterial
         self.material = TPUMaterial(c.get('material', {}))
 
         from solver.grid import AxiSymGrid
         self.grid = AxiSymGrid(self.nr, self.nz, self.domain_r,
-                               self.domain_z_min, self.domain_z_max)
+                               self.domain_z_min, self.domain_z_max,
+                               self.stretch_type, self.stretch_ratio)
 
         self._init_fields()
 
@@ -800,7 +837,7 @@ class CFDSolver:
 
         p_prime = _sor_pressure_solve(
             p_prime, div_star, self.rho, g.r_centers, g.r_faces,
-            g.dr, g.dz, nr, nz, dt_sub, rho_floor)
+            g.dr_arr, g.dz_arr, nr, nz, dt_sub, rho_floor)
         return p_prime
 
     def step(self):
@@ -812,7 +849,7 @@ class CFDSolver:
         self._update_properties()
 
         dur_dr, dur_dz, duz_dr, duz_dz = compute_velocity_gradients(
-            self.ur, self.uz, nr, nz, g.dr, g.dz)
+            self.ur, self.uz, nr, nz, g.r_centers, g.z_centers)
         gamma_dot = compute_shear_rate_field(
             dur_dr, dur_dz, duz_dr, duz_dz, self.ur, g.r_centers, nr, nz)
 
@@ -825,7 +862,7 @@ class CFDSolver:
         dt = self._compute_adaptive_dt()
 
         f_st_r, f_st_z = compute_csf_force(
-            self.alpha, m.sigma, g.r_centers, g.dr, g.dz, nr, nz)
+            self.alpha, m.sigma, g.r_centers, g.r_faces, g.dz_arr, nr, nz)
 
         alpha_threshold = 0.01
         nozzle_r_idx = min(np.searchsorted(g.r_faces, self.nozzle_radius), nr)
@@ -861,26 +898,35 @@ class CFDSolver:
 
                     dp_dz = 0.0
                     if j > 0 and j < nz - 1:
-                        dp_dz = (self.p[i, j + 1] - self.p[i, j - 1]) / (2.0 * g.dz)
+                        dz_c = 0.5 * (g.dz_arr[j - 1] + g.dz_arr[j]) + 0.5 * (g.dz_arr[j] + g.dz_arr[j + 1])
+                        dp_dz = (self.p[i, j + 1] - self.p[i, j - 1]) / dz_c
                     elif j == 0 and nz > 1:
-                        dp_dz = (self.p[i, j + 1] - self.p[i, j]) / g.dz
+                        dp_dz = (self.p[i, j + 1] - self.p[i, j]) / (0.5 * (g.dz_arr[j] + g.dz_arr[j + 1]))
 
                     dp_dr = 0.0
                     if i > 0 and i < nr - 1:
-                        dp_dr = (self.p[i + 1, j] - self.p[i - 1, j]) / (2.0 * g.dr)
+                        dp_dr = (self.p[i + 1, j] - self.p[i - 1, j]) / (g.r_centers[i + 1] - g.r_centers[i - 1])
                     elif i == 0 and nr > 1:
-                        dp_dr = (self.p[1, j] - self.p[0, j]) / g.dr
+                        dp_dr = (self.p[1, j] - self.p[0, j]) / (g.r_centers[1] - g.r_centers[0])
 
                     visc_z = 0.0
                     visc_r = 0.0
                     if j > 0 and j < nz - 1:
-                        visc_z += eta_c * (self.uz[i, j+1] - 2*self.uz[i, j] + self.uz[i, j-1]) / (g.dz**2)
-                        visc_r += eta_c * (self.ur[i, j+1] - 2*self.ur[i, j] + self.ur[i, j-1]) / (g.dz**2)
+                        dz_n = 0.5 * (g.dz_arr[j] + g.dz_arr[j + 1])
+                        dz_s = 0.5 * (g.dz_arr[j - 1] + g.dz_arr[j])
+                        dz_avg = 0.5 * (dz_n + dz_s)
+                        visc_z += eta_c * (self.uz[i, j+1] - 2*self.uz[i, j] + self.uz[i, j-1]) / (dz_avg**2)
+                        visc_r += eta_c * (self.ur[i, j+1] - 2*self.ur[i, j] + self.ur[i, j-1]) / (dz_avg**2)
                     if i > 0 and i < nr - 1:
-                        visc_z += eta_c * (self.uz[i+1, j] - 2*self.uz[i, j] + self.uz[i-1, j]) / (g.dr**2)
-                        visc_r += eta_c * (self.ur[i+1, j] - 2*self.ur[i, j] + self.ur[i-1, j]) / (g.dr**2)
+                        dr_e = g.r_centers[i + 1] - g.r_centers[i]
+                        dr_w = g.r_centers[i] - g.r_centers[i - 1]
+                        dr_avg = 0.5 * (dr_e + dr_w)
+                        visc_z += eta_c * (self.uz[i+1, j] - 2*self.uz[i, j] + self.uz[i-1, j]) / (dr_avg**2)
+                        visc_r += eta_c * (self.ur[i+1, j] - 2*self.ur[i, j] + self.ur[i-1, j]) / (dr_avg**2)
 
-                    dt_local = min(dt, rho_c * min(g.dr, g.dz)**2 / (4 * max(eta_c, 1.0)))
+                    dr_min = g.dr_arr[i]
+                    dz_min = g.dz_arr[j]
+                    dt_local = min(dt, rho_c * min(dr_min, dz_min)**2 / (4 * max(eta_c, 1.0)))
 
                     uz_star[i, j] = self.uz[i, j] + dt_local * (-dp_dz / rho_c + self.gravity + visc_z / rho_c)
                     ur_star[i, j] = self.ur[i, j] + dt_local * (-dp_dr / rho_c + visc_r / rho_c)
@@ -905,7 +951,7 @@ class CFDSolver:
 
         for piso_iter in range(self.n_piso):
             div_star = compute_divergence_axisym(
-                ur_star, uz_star, g.r_centers, g.r_faces, g.dr, g.dz, nr, nz)
+                ur_star, uz_star, g.r_centers, g.r_faces, g.dr_arr, g.dz_arr, nr, nz)
 
             p_prime = self._solve_pressure_correction(div_star, dt)
 
@@ -924,19 +970,20 @@ class CFDSolver:
 
                     dp_dr = 0.0
                     if i > 0 and i < nr - 1:
-                        dp_dr = (p_prime[i + 1, j] - p_prime[i - 1, j]) / (2.0 * g.dr)
+                        dp_dr = (p_prime[i + 1, j] - p_prime[i - 1, j]) / (g.r_centers[i + 1] - g.r_centers[i - 1])
                     elif i == 0 and nr > 1:
-                        dp_dr = (p_prime[1, j] - p_prime[0, j]) / g.dr
+                        dp_dr = (p_prime[1, j] - p_prime[0, j]) / (g.r_centers[1] - g.r_centers[0])
                     elif i == nr - 1:
-                        dp_dr = (p_prime[i, j] - p_prime[i - 1, j]) / g.dr
+                        dp_dr = (p_prime[i, j] - p_prime[i - 1, j]) / (g.r_centers[i] - g.r_centers[i - 1])
 
                     dp_dz = 0.0
                     if j > 0 and j < nz - 1:
-                        dp_dz = (p_prime[i, j + 1] - p_prime[i, j - 1]) / (2.0 * g.dz)
+                        dz_c = 0.5 * (g.dz_arr[j - 1] + g.dz_arr[j]) + 0.5 * (g.dz_arr[j] + g.dz_arr[j + 1])
+                        dp_dz = (p_prime[i, j + 1] - p_prime[i, j - 1]) / dz_c
                     elif j == 0 and nz > 1:
-                        dp_dz = (p_prime[i, j + 1] - p_prime[i, j]) / g.dz
+                        dp_dz = (p_prime[i, j + 1] - p_prime[i, j]) / (0.5 * (g.dz_arr[j] + g.dz_arr[j + 1]))
                     elif j == nz - 1 and nz > 1:
-                        dp_dz = (p_prime[i, j] - p_prime[i, j - 1]) / g.dz
+                        dp_dz = (p_prime[i, j] - p_prime[i, j - 1]) / (0.5 * (g.dz_arr[j - 1] + g.dz_arr[j]))
 
                     ur_star[i, j] -= dt * dp_dr / rho_ij
                     uz_star[i, j] -= dt * dp_dz / rho_ij
@@ -966,16 +1013,16 @@ class CFDSolver:
 
         self.alpha = advect_vof_axisym(
             self.alpha, self.ur, self.uz,
-            g.r_centers, g.r_faces, g.dr, g.dz, nr, nz, dt)
+            g.r_centers, g.r_faces, g.dz_arr, nr, nz, dt)
 
         if self.c_alpha > 0:
             self.alpha = apply_vof_compression(
                 self.alpha, self.ur, self.uz,
-                g.r_centers, g.r_faces, g.dr, g.dz, nr, nz, dt, self.c_alpha)
+                g.r_centers, g.r_faces, g.dz_arr, nr, nz, dt, self.c_alpha)
 
         self.T = advect_temperature_axisym(
             self.T, self.ur, self.uz, self.rho, self.cp, self.k_field,
-            g.r_centers, g.r_faces, g.dr, g.dz, nr, nz, dt,
+            g.r_centers, g.r_faces, g.dz_arr, nr, nz, dt,
             self.h_conv, self.T_ambient, self.alpha)
 
         np.nan_to_num(self.T, copy=False, nan=self.T_ambient, posinf=self.T_ambient, neginf=self.T_ambient)
@@ -1057,7 +1104,7 @@ class CFDSolver:
                 a2 = self.alpha[i + 1, j]
                 if (a1 - 0.5) * (a2 - 0.5) < 0:
                     t = (0.5 - a1) / (a2 - a1) if abs(a2 - a1) > 1e-10 else 0.5
-                    r_interp = g.r_centers[i] + t * g.dr
+                    r_interp = g.r_centers[i] + t * (g.r_centers[i + 1] - g.r_centers[i])
                     contour_r.append(float(r_interp))
                     contour_z.append(float(g.z_centers[j]))
 
@@ -1067,7 +1114,7 @@ class CFDSolver:
                 a2 = self.alpha[i, j + 1]
                 if (a1 - 0.5) * (a2 - 0.5) < 0:
                     t = (0.5 - a1) / (a2 - a1) if abs(a2 - a1) > 1e-10 else 0.5
-                    z_interp = g.z_centers[j] + t * g.dz
+                    z_interp = g.z_centers[j] + t * (g.z_centers[j + 1] - g.z_centers[j])
                     contour_r.append(float(g.r_centers[i]))
                     contour_z.append(float(z_interp))
 
@@ -1083,6 +1130,8 @@ class CFDSolver:
             'contour_z': contour_z,
             'r_centers': g.r_centers.tolist(),
             'z_centers': g.z_centers.tolist(),
+            'r_faces': g.r_faces.tolist(),
+            'z_faces': g.z_faces.tolist(),
             'nr': self.nr,
             'nz': self.nz,
             'nozzle_radius': self.nozzle_radius,
