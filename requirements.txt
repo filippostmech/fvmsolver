@@ -1,0 +1,6 @@
+fastapi>=0.129.0
+numba>=0.64.0
+numpy>=2.4.2
+scipy>=1.17.0
+uvicorn>=0.41.0
+websockets>=16.0

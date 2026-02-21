@@ -1,8 +1,17 @@
 [project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
+name = "fdm-extrusion-cfd"
+version = "1.0.0"
+description = "2D axisymmetric CFD solver for FDM extrusion simulation with real-time web visualization"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+keywords = ["cfd", "fdm", "extrusion", "3d-printing", "finite-volume", "simulation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
     "fastapi>=0.129.0",
     "numba>=0.64.0",
