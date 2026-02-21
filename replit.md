@@ -56,13 +56,15 @@ main.py       - Entry point (uvicorn on port 5000)
 - None recorded yet
 
 ## Recent Changes
+- Added print bed wall BC at j=0: no-slip (uz=0, ur=0), zero-gradient temperature
+- Near-bed momentum solve with viscous diffusion for polymer spreading on print bed
+- Moved pressure reference from j=0 row to far-field air corner (single Dirichlet point)
+- Increased default steps to 8000 (frames_per_update=80) for full bed contact simulation
+- Polymer exits nozzle, swells (die swell), travels to bed, and spreads radially on contact
 - Fixed z-axis orientation: nozzle at positive z (top), extrudate at negative z (bottom)
 - Pre-filled nozzle interior with polymer (alpha=1) for stable startup
 - Hybrid velocity approach: prescribed Poiseuille profile inside nozzle, plug flow extension in extrudate
 - Air region (alpha < 0.01) gets zero velocity to avoid density-ratio instability
-- Aligned frontend defaults with backend: nr=15, nz=30, dt=1e-5, steps=1000, frames_per_update=20
-- Inlet BC at j=nz-1 (top), pressure outlet at j=0 (bottom)
-- Simulation runs 1000 steps stably with clean velocity profiles (uz ∈ [-0.079, 0.002] m/s)
-- Rewrote FVM solver with fully conservative axisymmetric discretization
-- Replaced BiCGSTAB pressure solver with robust Jacobi iteration
-- Added velocity and pressure clamping for stability
+- Aligned frontend defaults with backend: nr=15, nz=30, dt=1e-5, steps=8000, frames_per_update=80
+- Inlet BC at j=nz-1 (top), print bed wall at j=0 (bottom)
+- Simulation runs 8000 steps stably with clean velocity profiles (uz ∈ [-0.08, 0.002] m/s)
