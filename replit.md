@@ -72,3 +72,9 @@ main.py       - Entry point (uvicorn on port 5000)
 - Binary VOF colormap: solid red (polymer, alpha>=0.5) / solid blue (air, alpha<0.5) with sharp cutoff
 - Smooth free surface contour using Catmull-Rom spline (cubic Bezier) interpolation
 - Simulation runs stably with both uniform and stretched grids
+- Velocity display masked in air region (alpha < 0.5) to show zero velocity outside polymer
+- Colorbar title text wraps automatically to prevent truncation on narrow canvas
+- Nozzle Exit / Extrudate labels auto-separate to prevent overlap in small-gap configurations
+- Diagnostic plots filter NaN/Inf values before rendering
+- Swell ratio calculation uses fallback (previous value or 1.0) when no polymer found at z-level
+- Pressure drop computed from nozzle-radius-aligned cells at both inlet and outlet (polymer region only)
