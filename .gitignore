@@ -13,3 +13,5 @@ build/
 venv/
 *.log
 .DS_Store
+replit.md
+attached_assets/
