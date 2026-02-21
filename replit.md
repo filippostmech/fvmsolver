@@ -62,6 +62,7 @@ main.py       - Entry point (uvicorn on port 5000)
 - Binary VOF colormap: solid red (polymer, alpha>=0.5) / solid blue (air, alpha<0.5) with sharp cutoff
 - Rainbow colormap preserved for temperature, velocity, pressure fields
 - Smooth free surface contour using Catmull-Rom spline (cubic Bezier) interpolation
+- Closed contour loop: right side → front tip → left side with closePath(), using both radial and axial alpha=0.5 crossings
 - Added print bed wall BC at j=0: no-slip (uz=0, ur=0), zero-gradient temperature
 - Near-bed momentum solve with viscous diffusion for polymer spreading on print bed
 - Moved pressure reference from j=0 row to far-field air corner (single Dirichlet point)

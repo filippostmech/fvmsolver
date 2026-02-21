@@ -1061,6 +1061,16 @@ class CFDSolver:
                     contour_r.append(float(r_interp))
                     contour_z.append(float(g.z_centers[j]))
 
+        for i in range(self.nr):
+            for j in range(self.nz - 1):
+                a1 = self.alpha[i, j]
+                a2 = self.alpha[i, j + 1]
+                if (a1 - 0.5) * (a2 - 0.5) < 0:
+                    t = (0.5 - a1) / (a2 - a1) if abs(a2 - a1) > 1e-10 else 0.5
+                    z_interp = g.z_centers[j] + t * g.dz
+                    contour_r.append(float(g.r_centers[i]))
+                    contour_z.append(float(z_interp))
+
         result = {
             'alpha': self.alpha.tolist(),
             'u_mag': u_mag.tolist(),

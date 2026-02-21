@@ -431,44 +431,62 @@ function renderField(frame) {
         ctx.shadowColor = 'rgba(255,255,255,0.4)';
         ctx.shadowBlur = 4;
 
-        const points = [];
+        const allPts = [];
         for (let k = 0; k < frame.contour_r.length; k++) {
-            const rFrac = frame.contour_r[k] / rMax;
-            const zFrac = (frame.contour_z[k] - zMin) / zRange;
-            const px = centerX + rFrac * halfW;
-            const py = margin.top + (1 - zFrac) * plotH;
-            points.push({ x: px, y: py, xm: centerX - rFrac * halfW });
+            const r = frame.contour_r[k];
+            const z = frame.contour_z[k];
+            allPts.push({ r, z });
         }
 
-        points.sort((a, b) => a.y - b.y);
+        if (allPts.length > 1) {
+            const tipZ = Math.min(...allPts.map(p => p.z));
 
-        function drawSmoothCurve(ctx, pts, getX) {
-            if (pts.length < 2) return;
-            ctx.beginPath();
-            ctx.moveTo(getX(pts[0]), pts[0].y);
+            const sidePts = allPts.filter(p => p.z > tipZ + 1e-10);
+            const frontPts = allPts.filter(p => p.z <= tipZ + 1e-10);
 
-            if (pts.length === 2) {
-                ctx.lineTo(getX(pts[1]), pts[1].y);
-            } else {
+            sidePts.sort((a, b) => b.z - a.z);
+            frontPts.sort((a, b) => b.r - a.r);
+
+            const orderedR = [];
+            for (const p of sidePts) orderedR.push(p);
+            for (const p of frontPts) orderedR.push(p);
+
+            function toScreen(r, z) {
+                const rFrac = r / rMax;
+                const zFrac = (z - zMin) / zRange;
+                return {
+                    x: centerX + rFrac * halfW,
+                    y: margin.top + (1 - zFrac) * plotH
+                };
+            }
+
+            const rightPts = orderedR.map(p => toScreen(p.r, p.z));
+
+            const leftPts = orderedR.slice().reverse().map(p => toScreen(-p.r, p.z));
+
+            const loopPts = [...rightPts, ...leftPts];
+
+            function drawSmoothPath(ctx, pts) {
+                if (pts.length < 2) return;
+                ctx.beginPath();
+                ctx.moveTo(pts[0].x, pts[0].y);
                 for (let k = 0; k < pts.length - 1; k++) {
                     const p0 = k > 0 ? pts[k - 1] : pts[k];
                     const p1 = pts[k];
                     const p2 = pts[k + 1];
                     const p3 = k < pts.length - 2 ? pts[k + 2] : pts[k + 1];
-
-                    const cp1x = getX(p1) + (getX(p2) - getX(p0)) / 6;
+                    const cp1x = p1.x + (p2.x - p0.x) / 6;
                     const cp1y = p1.y + (p2.y - p0.y) / 6;
-                    const cp2x = getX(p2) - (getX(p3) - getX(p1)) / 6;
+                    const cp2x = p2.x - (p3.x - p1.x) / 6;
                     const cp2y = p2.y - (p3.y - p1.y) / 6;
-
-                    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, getX(p2), p2.y);
+                    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
                 }
+                ctx.closePath();
+                ctx.stroke();
             }
-            ctx.stroke();
-        }
 
-        drawSmoothCurve(ctx, points, p => p.x);
-        drawSmoothCurve(ctx, points, p => p.xm);
+            drawSmoothPath(ctx, loopPts);
+        }
 
         ctx.shadowBlur = 0;
     }
