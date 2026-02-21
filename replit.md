@@ -59,7 +59,7 @@ main.py       - Entry point (uvicorn on port 5000)
 ## Recent Changes
 - Added Nozzle-Bed Gap (mm) input to UI with auto-calculated simulation steps
 - Auto-step formula: steps = ceil(1.3 * gap / u_max / dt), rounded to nearest 500
-- Two-color VOF colormap: red (polymer, alpha=1) ↔ blue (air, alpha=0) with smooth blending
+- Binary VOF colormap: solid red (polymer, alpha>=0.5) / solid blue (air, alpha<0.5) with sharp cutoff
 - Rainbow colormap preserved for temperature, velocity, pressure fields
 - Smooth free surface contour using Catmull-Rom spline (cubic Bezier) interpolation
 - Added print bed wall BC at j=0: no-slip (uz=0, ur=0), zero-gradient temperature

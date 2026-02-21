@@ -246,10 +246,11 @@ function colormapRainbow(t) {
 
 function colormapVOF(t) {
     t = Math.max(0, Math.min(1, t));
-    const r = Math.floor(210 * t + 30 * (1 - t));
-    const g = Math.floor(40 * t + 50 * (1 - t));
-    const b = Math.floor(40 * t + 210 * (1 - t));
-    return `rgb(${r},${g},${b})`;
+    if (t >= 0.5) {
+        return 'rgb(210,40,40)';
+    } else {
+        return 'rgb(30,50,210)';
+    }
 }
 
 function colormap(t, fieldName) {
@@ -305,7 +306,7 @@ function renderField(frame) {
         for (let j = 0; j < nz; j++) {
             const v = data[i][j];
             const t = (v - fmin) / (fmax - fmin);
-            const col = colormap(t, fieldName);
+            const col = (fieldName === 'alpha') ? colormapVOF(v) : colormap(t, fieldName);
 
             const x_right = centerX + i * cellW;
             const x_left = centerX - (i + 1) * cellW;
@@ -565,16 +566,6 @@ function renderColorbar(fmin, fmax, fieldName) {
     const barH = ch - marginTop - marginBot;
     const barX = 8;
 
-    for (let y = 0; y < barH; y++) {
-        const t = 1 - y / barH;
-        ctx.fillStyle = colormap(t, fieldName);
-        ctx.fillRect(barX, marginTop + y, barW, 1);
-    }
-
-    ctx.strokeStyle = '#5c6b7a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX, marginTop, barW, barH);
-
     const info = FIELD_INFO[fieldName] || { title: fieldName, unit: '', fmt: v => v.toFixed(3) };
 
     ctx.fillStyle = '#4fc3f7';
@@ -586,38 +577,76 @@ function renderColorbar(fmin, fmax, fieldName) {
         ctx.fillText(line, barX, marginTop - 12 - (titleLines.length - 1 - idx) * 14);
     });
 
-    ctx.fillStyle = '#b0bec5';
-    ctx.font = '12px monospace';
-
-    const nTicks = 6;
-    for (let i = 0; i <= nTicks; i++) {
-        const frac = i / nTicks;
-        const val = fmax - frac * (fmax - fmin);
-        const y = marginTop + frac * barH;
+    if (fieldName === 'alpha') {
+        const halfH = barH / 2;
+        ctx.fillStyle = 'rgb(210,40,40)';
+        ctx.fillRect(barX, marginTop, barW, halfH);
+        ctx.fillStyle = 'rgb(30,50,210)';
+        ctx.fillRect(barX, marginTop + halfH, barW, halfH);
 
         ctx.strokeStyle = '#5c6b7a';
         ctx.lineWidth = 1;
+        ctx.strokeRect(barX, marginTop, barW, barH);
+
+        ctx.fillStyle = '#b0bec5';
+        ctx.font = '12px monospace';
+        ctx.fillText('Polymer', barX + barW + 7, marginTop + halfH / 2 + 4);
+        ctx.fillText('Air', barX + barW + 7, marginTop + halfH + halfH / 2 + 4);
+
+        ctx.strokeStyle = '#5c6b7a';
         ctx.beginPath();
-        ctx.moveTo(barX + barW, y);
-        ctx.lineTo(barX + barW + 4, y);
+        ctx.moveTo(barX, marginTop + halfH);
+        ctx.lineTo(barX + barW + 4, marginTop + halfH);
         ctx.stroke();
 
-        let txt;
-        const abs = Math.abs(val);
-        if (abs === 0) {
-            txt = '0';
-        } else if (abs >= 1e6) {
-            txt = (val / 1e6).toFixed(1) + 'M';
-        } else if (abs >= 1e3) {
-            txt = (val / 1e3).toFixed(1) + 'k';
-        } else if (abs >= 1) {
-            txt = val.toFixed(2);
-        } else if (abs >= 0.01) {
-            txt = val.toFixed(3);
-        } else {
-            txt = val.toExponential(1);
+        ctx.fillStyle = '#7a8fa6';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('\u03b1 \u2265 0.5', barX + barW + 7, marginTop + halfH / 2 + 18);
+        ctx.fillText('\u03b1 < 0.5', barX + barW + 7, marginTop + halfH + halfH / 2 + 18);
+    } else {
+        for (let y = 0; y < barH; y++) {
+            const t = 1 - y / barH;
+            ctx.fillStyle = colormap(t, fieldName);
+            ctx.fillRect(barX, marginTop + y, barW, 1);
         }
-        ctx.fillText(txt, barX + barW + 7, y + 4);
+
+        ctx.strokeStyle = '#5c6b7a';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, marginTop, barW, barH);
+
+        ctx.fillStyle = '#b0bec5';
+        ctx.font = '12px monospace';
+
+        const nTicks = 6;
+        for (let i = 0; i <= nTicks; i++) {
+            const frac = i / nTicks;
+            const val = fmax - frac * (fmax - fmin);
+            const y = marginTop + frac * barH;
+
+            ctx.strokeStyle = '#5c6b7a';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(barX + barW, y);
+            ctx.lineTo(barX + barW + 4, y);
+            ctx.stroke();
+
+            let txt;
+            const abs = Math.abs(val);
+            if (abs === 0) {
+                txt = '0';
+            } else if (abs >= 1e6) {
+                txt = (val / 1e6).toFixed(1) + 'M';
+            } else if (abs >= 1e3) {
+                txt = (val / 1e3).toFixed(1) + 'k';
+            } else if (abs >= 1) {
+                txt = val.toFixed(2);
+            } else if (abs >= 0.01) {
+                txt = val.toFixed(3);
+            } else {
+                txt = val.toExponential(1);
+            }
+            ctx.fillText(txt, barX + barW + 7, y + 4);
+        }
     }
 
     if (info.unit) {
