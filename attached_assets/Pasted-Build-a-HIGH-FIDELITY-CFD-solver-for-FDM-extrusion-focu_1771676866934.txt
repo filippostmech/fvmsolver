@@ -1,0 +1,84 @@
+Build a HIGH-FIDELITY CFD solver for FDM extrusion focused on 2D AXISYMMETRIC (r–z) nozzle + near-field extrusion using the Finite Volume Method (FVM). The solver must be physically correct (conservative FVM), stable, and produce real-time-ish visualization.
+
+PRIMARY GOAL
+Simulate TPU melt extruding through a nozzle and forming a free-surface jet/extrudate right after the nozzle exit (near-field), including:
+- incompressible flow (Navier–Stokes, axisymmetric form)
+- temperature field (energy equation)
+- non-Newtonian viscosity η(T,γ̇) for TPU (Carreau–Yasuda recommended)
+- free surface using VOF (polymer/air) + surface tension (CSF)
+Then VISUALIZE the extrudate shape and fields over time.
+
+NUMERICAL REQUIREMENTS (must implement)
+1) Structured-grid FVM in axisymmetric r–z:
+   - cell-centered scalars (p,T,alpha,eta,rho,k,cp)
+   - face fluxes for advection
+   - correct axisymmetric geometric factors (2πr weighting in volumes/areas)
+
+2) Pressure–velocity coupling:
+   - transient projection method / PISO loop
+   - solve pressure Poisson equation with sparse iterative solver (CG/BiCGSTAB) + preconditioning
+
+3) Advection schemes:
+   - bounded upwind/TVD for momentum and energy
+   - bounded conservative VOF advection with interface compression term to keep alpha sharp
+
+4) Surface tension:
+   - CSF: curvature from alpha gradients, force added to momentum
+   - include capillary time-step stability check
+
+5) TPU viscosity model:
+   - Carreau–Yasuda or Cross: η(γ̇) with temperature shift a(T) using WLF (if Tg provided) or Arrhenius
+   - include viscosity clamping (eta_min, eta_max) for stability and logging
+
+PHYSICS MODEL
+- Two-phase (polymer + air) with VOF:
+  - alpha=1 polymer, alpha=0 air
+  - blend properties by alpha
+- Solve:
+  - ∇·u = 0
+  - ρ(∂u/∂t + u·∇u) = −∇p + ∇·(2ηD) + ρg + F_surface_tension
+  - ρcp(∂T/∂t + u·∇T) = ∇·(k∇T)
+- Include boundary conditions:
+  - inlet: specified volumetric flow rate or velocity profile; T = nozzle temp
+  - walls: no-slip; wall temperature = nozzle temp (configurable)
+  - outlet: pressure outlet (p=0), zero-gradient for u and T
+  - optional ambient cooling term near free surface (configurable)
+
+VISUALIZATION + UI
+- Provide a web UI with:
+  - parameter panel: nozzle geometry (diameter, length), flow rate, nozzle temp, ambient temp, material params, surface tension, grid resolution, dt
+  - run/pause/reset controls
+  - plots: pressure drop vs time, swell ratio vs z, centerline temperature vs z
+  - animated 2D field visualization:
+    - alpha field with extracted free-surface contour (alpha=0.5) to show jet shape
+    - overlays for |u| and T
+- Stream frames/results from backend to frontend (WebSocket preferred, or polling endpoints).
+
+ARCHITECTURE
+- /solver: core FVM solver (C++ preferred for speed; Python acceptable only if accelerated with numba)
+- /backend: API server exposing:
+  - POST /simulate (start run, returns run_id)
+  - GET /frame?run_id=...&i=... (or websocket stream)
+  - GET /results?run_id=...
+- /frontend: UI + visualization (Canvas/WebGL)
+- Output files for debugging: VTK/VTU per timestep for fields (optional toggle)
+
+MILESTONES (must deliver sequentially with tests)
+M1) Single-phase Newtonian nozzle Poiseuille flow (validate profile + ΔP)
+M2) Add non-Newtonian Carreau–Yasuda viscosity
+M3) Add energy equation + T-dependent viscosity shift
+M4) Add VOF + surface tension, simulate jet/extrudate shape at nozzle exit
+M5) Full UI visualization + streaming animation
+
+TESTS & DIAGNOSTICS (required)
+- Conservation checks: mass conservation each timestep (and alpha mass for VOF)
+- Poiseuille validation test
+- CFL and capillary timestep reporting
+- Logging of extrema: min/max alpha, T, eta, |u|, pressure
+
+DOCUMENTATION
+- README explaining equations, discretization, coupling schedule, stability constraints, limitations, and how to run in Replit.
+- Be honest: this is high-fidelity 2D axisymmetric CFD; not full 3D printer-scale simulation.
+
+IMPORTANT
+Do NOT skip the axisymmetric geometric terms. Do NOT replace CFD with a toy model. Focus on a stable, correct FVM core and an interpretable visualization.
