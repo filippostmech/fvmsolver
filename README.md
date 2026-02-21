@@ -109,7 +109,7 @@ Non-uniform grids use power-law stretching to cluster cells where resolution mat
 ## Project Structure
 
 ```
-fdm-extrusion-cfd/
+fvmsolver/
 ├── main.py                 # Entry point (uvicorn server on port 5000)
 ├── solver/
 │   ├── __init__.py
@@ -153,8 +153,8 @@ fdm-extrusion-cfd/
 ### Setup
 
 ```bash
-git clone https://github.com/<your-username>/fdm-extrusion-cfd.git
-cd fdm-extrusion-cfd
+git clone https://github.com/<your-username>/fvmsolver.git
+cd fvmsolver
 
 # Create virtual environment (optional but recommended)
 python -m venv .venv

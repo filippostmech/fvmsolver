@@ -1,5 +1,5 @@
 [project]
-name = "fdm-extrusion-cfd"
+name = "fvmsolver"
 version = "1.0.0"
 description = "2D axisymmetric CFD solver for FDM extrusion simulation with real-time web visualization"
 requires-python = ">=3.11"
