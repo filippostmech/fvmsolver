@@ -1,0 +1,267 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f1923;
+    color: #e0e6ed;
+    min-height: 100vh;
+}
+
+.app-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 10px;
+}
+
+.header {
+    text-align: center;
+    padding: 12px;
+    border-bottom: 1px solid #1e3a5f;
+    margin-bottom: 10px;
+}
+
+.header h1 {
+    font-size: 1.4em;
+    color: #4fc3f7;
+    font-weight: 600;
+}
+
+.subtitle {
+    font-size: 0.8em;
+    color: #7a8fa6;
+    margin-top: 2px;
+}
+
+.main-layout {
+    display: flex;
+    gap: 12px;
+}
+
+.sidebar {
+    width: 260px;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+}
+
+.panel {
+    background: #162635;
+    border: 1px solid #1e3a5f;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.panel h3 {
+    font-size: 0.85em;
+    color: #4fc3f7;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.panel label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.78em;
+    margin-bottom: 4px;
+    color: #9ab;
+}
+
+.panel input[type="number"],
+.panel select {
+    width: 90px;
+    padding: 3px 5px;
+    background: #0d1b2a;
+    border: 1px solid #2a4a6b;
+    border-radius: 3px;
+    color: #e0e6ed;
+    font-size: 0.85em;
+    text-align: right;
+}
+
+.panel input:focus {
+    outline: none;
+    border-color: #4fc3f7;
+}
+
+.controls {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.82em;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+    flex: 1;
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: #1976d2;
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #2196f3;
+}
+
+.btn-secondary {
+    background: #455a64;
+    color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: #607d8b;
+}
+
+.btn-danger {
+    background: #c62828;
+    color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: #e53935;
+}
+
+.status-panel #status-text {
+    font-size: 0.82em;
+    color: #81c784;
+    margin-bottom: 4px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background: #1a2e42;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #1976d2, #4fc3f7);
+    transition: width 0.3s;
+}
+
+.diagnostics-text {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.7em;
+    color: #7a8fa6;
+    white-space: pre-line;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.viz-controls {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 6px 10px;
+    background: #162635;
+    border-radius: 6px;
+    border: 1px solid #1e3a5f;
+    font-size: 0.82em;
+}
+
+.viz-controls label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #9ab;
+}
+
+.viz-controls select {
+    padding: 3px 6px;
+    background: #0d1b2a;
+    border: 1px solid #2a4a6b;
+    border-radius: 3px;
+    color: #e0e6ed;
+    font-size: 1em;
+}
+
+.canvas-container {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: flex-start;
+    background: #0a1520;
+    border: 1px solid #1e3a5f;
+    border-radius: 6px;
+    padding: 12px;
+}
+
+#field-canvas {
+    border: 1px solid #2a4a6b;
+    border-radius: 3px;
+}
+
+#colorbar-canvas {
+    border: 1px solid #2a4a6b;
+    border-radius: 3px;
+}
+
+.plots-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.plot-container {
+    flex: 1;
+    min-width: 280px;
+    background: #162635;
+    border: 1px solid #1e3a5f;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.plot-container h4 {
+    font-size: 0.8em;
+    color: #4fc3f7;
+    margin-bottom: 6px;
+    text-align: center;
+}
+
+.plot-container canvas {
+    width: 100%;
+    height: 200px;
+    border: 1px solid #1a2e42;
+    border-radius: 3px;
+}
+
+@media (max-width: 900px) {
+    .main-layout {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        max-height: none;
+    }
+}

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FDM Extrusion CFD Solver</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>FDM Extrusion CFD Solver</h1>
+            <p class="subtitle">2D Axisymmetric FVM | Navier-Stokes + VOF + Carreau-Yasuda</p>
+        </header>
+
+        <div class="main-layout">
+            <aside class="sidebar">
+                <div class="panel">
+                    <h3>Nozzle Geometry</h3>
+                    <label>Diameter (mm)
+                        <input type="number" id="nozzle_diameter" value="0.4" step="0.1" min="0.1">
+                    </label>
+                    <label>Length (mm)
+                        <input type="number" id="nozzle_length" value="2.0" step="0.1" min="0.1">
+                    </label>
+                </div>
+
+                <div class="panel">
+                    <h3>Flow Conditions</h3>
+                    <label>Flow Rate (mm&sup3;/s)
+                        <input type="number" id="flow_rate" value="5.0" step="0.5" min="0.1">
+                    </label>
+                    <label>Nozzle Temp (&deg;C)
+                        <input type="number" id="T_nozzle" value="220" step="5">
+                    </label>
+                    <label>Ambient Temp (&deg;C)
+                        <input type="number" id="T_ambient" value="25" step="5">
+                    </label>
+                    <label>h_conv (W/m&sup2;K)
+                        <input type="number" id="h_conv" value="10" step="1">
+                    </label>
+                </div>
+
+                <div class="panel">
+                    <h3>Material (TPU)</h3>
+                    <label>&eta;<sub>0</sub> (Pa&middot;s)
+                        <input type="number" id="eta_0" value="3000" step="100">
+                    </label>
+                    <label>&eta;<sub>&infin;</sub> (Pa&middot;s)
+                        <input type="number" id="eta_inf" value="50" step="10">
+                    </label>
+                    <label>&lambda; (s)
+                        <input type="number" id="lambda_cy" value="0.1" step="0.01">
+                    </label>
+                    <label>a
+                        <input type="number" id="a_cy" value="2.0" step="0.1">
+                    </label>
+                    <label>n
+                        <input type="number" id="n_cy" value="0.35" step="0.05">
+                    </label>
+                    <label>E<sub>a</sub> (J/mol)
+                        <input type="number" id="E_a" value="40000" step="1000">
+                    </label>
+                    <label>&sigma; (N/m)
+                        <input type="number" id="sigma" value="0.035" step="0.005">
+                    </label>
+                </div>
+
+                <div class="panel">
+                    <h3>Solver Settings</h3>
+                    <label>Grid Nr
+                        <input type="number" id="nr" value="30" step="5" min="10">
+                    </label>
+                    <label>Grid Nz
+                        <input type="number" id="nz" value="60" step="10" min="20">
+                    </label>
+                    <label>dt (s)
+                        <input type="number" id="dt" value="1e-6" step="1e-7">
+                    </label>
+                    <label>Steps
+                        <input type="number" id="n_steps" value="200" step="50" min="10">
+                    </label>
+                    <label>Frames/Update
+                        <input type="number" id="frames_per_update" value="5" step="1" min="1">
+                    </label>
+                </div>
+
+                <div class="panel controls">
+                    <button id="btn-run" class="btn btn-primary">Run Simulation</button>
+                    <button id="btn-pause" class="btn btn-secondary" disabled>Pause</button>
+                    <button id="btn-stop" class="btn btn-danger" disabled>Stop</button>
+                </div>
+
+                <div class="panel status-panel">
+                    <h3>Status</h3>
+                    <div id="status-text">Idle</div>
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <div id="diagnostics-text" class="diagnostics-text"></div>
+                </div>
+            </aside>
+
+            <main class="content">
+                <div class="viz-controls">
+                    <label>Field:
+                        <select id="field-select">
+                            <option value="alpha">VOF (alpha)</option>
+                            <option value="u_mag">Velocity |u|</option>
+                            <option value="T">Temperature</option>
+                            <option value="p">Pressure</option>
+                            <option value="eta">Viscosity</option>
+                        </select>
+                    </label>
+                    <label>
+                        <input type="checkbox" id="show-contour" checked> Show free surface
+                    </label>
+                    <label>
+                        <input type="checkbox" id="show-nozzle" checked> Show nozzle
+                    </label>
+                </div>
+
+                <div class="canvas-container">
+                    <canvas id="field-canvas" width="500" height="700"></canvas>
+                    <canvas id="colorbar-canvas" width="60" height="700"></canvas>
+                </div>
+
+                <div class="plots-row">
+                    <div class="plot-container">
+                        <h4>Pressure Drop vs Time</h4>
+                        <canvas id="plot-pressure" width="350" height="200"></canvas>
+                    </div>
+                    <div class="plot-container">
+                        <h4>Swell Ratio vs z</h4>
+                        <canvas id="plot-swell" width="350" height="200"></canvas>
+                    </div>
+                    <div class="plot-container">
+                        <h4>Centerline Temperature vs z</h4>
+                        <canvas id="plot-temperature" width="350" height="200"></canvas>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
