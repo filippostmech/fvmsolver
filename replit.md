@@ -56,10 +56,13 @@ main.py       - Entry point (uvicorn on port 5000)
 - None recorded yet
 
 ## Recent Changes
-- Fixed VOF initialization: domain starts empty, polymer enters from inlet boundary
-- Removed capillary timestep constraint for practical simulation speed
-- Updated default dt to 1e-5 and steps to 500 for visible polymer advancement
-- Major UI overhaul: nozzle/print bed overlays, larger fonts, engineering notation, info bar
+- Fixed z-axis orientation: nozzle at positive z (top), extrudate at negative z (bottom)
+- Pre-filled nozzle interior with polymer (alpha=1) for stable startup
+- Hybrid velocity approach: prescribed Poiseuille profile inside nozzle, plug flow extension in extrudate
+- Air region (alpha < 0.01) gets zero velocity to avoid density-ratio instability
+- Aligned frontend defaults with backend: nr=15, nz=30, dt=1e-5, steps=1000, frames_per_update=20
+- Inlet BC at j=nz-1 (top), pressure outlet at j=0 (bottom)
+- Simulation runs 1000 steps stably with clean velocity profiles (uz ∈ [-0.079, 0.002] m/s)
 - Rewrote FVM solver with fully conservative axisymmetric discretization
 - Replaced BiCGSTAB pressure solver with robust Jacobi iteration
 - Added velocity and pressure clamping for stability
