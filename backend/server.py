@@ -34,8 +34,8 @@ class SimConfig(BaseModel):
     E_a: float = 40000.0
     c_alpha: float = 1.0
     gravity: float = -9.81
-    n_steps: int = 1000
-    frames_per_update: int = 20
+    n_steps: int = 8000
+    frames_per_update: int = 80
 
 
 def run_simulation_sync(run_id: str, config: dict, n_steps: int, frames_per_update: int):

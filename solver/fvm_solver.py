@@ -603,7 +603,7 @@ def _sor_pressure_solve(p, div_star, rho, r_centers, r_faces, dr, dz, nr, nz, dt
         max_resid = 0.0
         for i in range(nr):
             for j in range(nz):
-                if j == 0:
+                if i == nr - 1 and j == 0:
                     p[i, j] = 0.0
                     continue
 
@@ -771,11 +771,12 @@ class CFDSolver:
         self.ur[-1, :] = 0.0
         self.uz[-1, :] = 0.0
 
-        self.p[:, 0] = 0.0
-
         for i in range(self.nr):
-            self.uz[i, 0] = self.uz[i, 1] if self.nz > 1 else 0.0
+            self.uz[i, 0] = 0.0
+            self.ur[i, 0] = 0.0
             self.T[i, 0] = self.T[i, 1] if self.nz > 1 else self.T_ambient
+
+        self.p[-1, 0] = 0.0
 
     def _compute_adaptive_dt(self):
         g = self.grid
@@ -839,6 +840,8 @@ class CFDSolver:
         ur_star = self.ur.copy()
         uz_star = self.uz.copy()
 
+        bed_interaction_height = 3
+
         for i in range(nr):
             for j in range(nz):
                 if self.alpha[i, j] < alpha_threshold:
@@ -849,7 +852,39 @@ class CFDSolver:
                 if j >= nozzle_z_start and i < nozzle_r_idx:
                     continue
 
-                if i < nozzle_r_idx:
+                if j == 0:
+                    uz_star[i, j] = 0.0
+                    ur_star[i, j] = 0.0
+                elif j < bed_interaction_height and self.alpha[i, 0] > 0.1:
+                    rho_c = max(self.rho[i, j], m.rho_polymer * 0.1)
+                    eta_c = self.eta[i, j]
+
+                    dp_dz = 0.0
+                    if j > 0 and j < nz - 1:
+                        dp_dz = (self.p[i, j + 1] - self.p[i, j - 1]) / (2.0 * g.dz)
+                    elif j == 0 and nz > 1:
+                        dp_dz = (self.p[i, j + 1] - self.p[i, j]) / g.dz
+
+                    dp_dr = 0.0
+                    if i > 0 and i < nr - 1:
+                        dp_dr = (self.p[i + 1, j] - self.p[i - 1, j]) / (2.0 * g.dr)
+                    elif i == 0 and nr > 1:
+                        dp_dr = (self.p[1, j] - self.p[0, j]) / g.dr
+
+                    visc_z = 0.0
+                    visc_r = 0.0
+                    if j > 0 and j < nz - 1:
+                        visc_z += eta_c * (self.uz[i, j+1] - 2*self.uz[i, j] + self.uz[i, j-1]) / (g.dz**2)
+                        visc_r += eta_c * (self.ur[i, j+1] - 2*self.ur[i, j] + self.ur[i, j-1]) / (g.dz**2)
+                    if i > 0 and i < nr - 1:
+                        visc_z += eta_c * (self.uz[i+1, j] - 2*self.uz[i, j] + self.uz[i-1, j]) / (g.dr**2)
+                        visc_r += eta_c * (self.ur[i+1, j] - 2*self.ur[i, j] + self.ur[i-1, j]) / (g.dr**2)
+
+                    dt_local = min(dt, rho_c * min(g.dr, g.dz)**2 / (4 * max(eta_c, 1.0)))
+
+                    uz_star[i, j] = self.uz[i, j] + dt_local * (-dp_dz / rho_c + self.gravity + visc_z / rho_c)
+                    ur_star[i, j] = self.ur[i, j] + dt_local * (-dp_dr / rho_c + visc_r / rho_c)
+                elif i < nozzle_r_idx:
                     uz_star[i, j] = nozzle_exit_uz[i]
                     ur_star[i, j] = 0.0
                 else:
@@ -911,9 +946,14 @@ class CFDSolver:
         ur_star[0, :] = 0.0
         ur_star[-1, :] = 0.0
         uz_star[-1, :] = 0.0
+        uz_star[:, 0] = 0.0
+        ur_star[:, 0] = 0.0
 
         self.ur = self.u_relax * ur_star + (1.0 - self.u_relax) * self.ur
         self.uz = self.u_relax * uz_star + (1.0 - self.u_relax) * self.uz
+
+        self.uz[:, 0] = 0.0
+        self.ur[:, 0] = 0.0
 
         np.nan_to_num(self.ur, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
         np.nan_to_num(self.uz, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
@@ -969,7 +1009,7 @@ class CFDSolver:
         nozzle_z_start = np.searchsorted(g.z_centers, 0.0)
 
         swell_ratios = []
-        for j in range(nozzle_z_start - 1, max(nozzle_z_start - 21, -1), -1):
+        for j in range(nozzle_z_start - 1, max(int(nozzle_z_start) - 21, -1), -1):
             for i in range(self.nr - 1, -1, -1):
                 if self.alpha[i, j] > 0.5:
                     swell_ratios.append(g.r_centers[i] / self.nozzle_radius)
