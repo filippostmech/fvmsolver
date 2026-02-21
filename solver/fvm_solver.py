@@ -826,8 +826,15 @@ class CFDSolver:
         if u_max_z > 1e-10:
             dt_cfl = min(dt_cfl, self.cfl_max * g.dz / u_max_z)
 
-        dt_adapt = min(dt_cfl, self.dt)
-        return max(dt_adapt, self.dt * 0.01)
+        dx_min = min(g.dr, g.dz)
+
+        k_max = max(self.material.k_polymer, self.material.k_air)
+        rho_cp_min = min(self.material.rho_polymer * self.material.cp_polymer,
+                         self.material.rho_air * self.material.cp_air)
+        dt_thermal = 0.25 * rho_cp_min * dx_min**2 / max(k_max, 1e-10)
+
+        dt_adapt = min(dt_cfl, dt_thermal, self.dt)
+        return max(dt_adapt, self.dt * 0.001)
 
     def _solve_pressure_correction(self, div_star, dt_sub):
         nr, nz = self.nr, self.nz
@@ -1026,7 +1033,9 @@ class CFDSolver:
             self.h_conv, self.T_ambient, self.alpha)
 
         np.nan_to_num(self.T, copy=False, nan=self.T_ambient, posinf=self.T_ambient, neginf=self.T_ambient)
-        np.clip(self.T, 200.0, 600.0, out=self.T)
+        T_clamp_min = self.T_ambient - 5.0
+        T_clamp_max = self.T_nozzle + 20.0
+        np.clip(self.T, T_clamp_min, T_clamp_max, out=self.T)
 
         self._apply_boundary_conditions()
         self.step_count += 1

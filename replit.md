@@ -45,15 +45,17 @@ main.py       - Entry point (uvicorn on port 5000)
 - Upwind advection for momentum, energy, and VOF
 - Projection method for pressure-velocity coupling with SOR pressure Poisson solver
 - VOF compression term for interface sharpening
-- Adaptive CFL-based timestep (uses minimum cell spacing for CFL)
+- Adaptive timestep with CFL + thermal diffusion constraints
 - Hoop stress term (eta*ur/r^2) in radial momentum
 - NaN/Inf clamping as safety net
 - Empty-domain initialization: polymer enters from inlet boundary only (no pre-filling)
 
 ## Stability Constraints
 - CFL condition: dt < CFL_max * min(dr,dz) / max(|u|)
+- Thermal diffusion: dt < 0.25 * rho_cp_min * dx_min^2 / k_max
+- Viscous diffusion: handled per-cell in momentum loop (dt_local = rho * dx^2 / (4*eta))
+- Temperature clamping: [T_ambient - 5K, T_nozzle + 20K] as safety net
 - Capillary constraint disabled for web demo performance
-- Explicit diffusion: limited by grid size and max viscosity (practical for small grids)
 
 ## User Preferences
 - Two-color VOF display: red for polymer, blue for air (not rainbow)
