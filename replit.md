@@ -53,18 +53,19 @@ main.py       - Entry point (uvicorn on port 5000)
 - Explicit diffusion: limited by grid size and max viscosity (practical for small grids)
 
 ## User Preferences
-- None recorded yet
+- Two-color VOF display: red for polymer, blue for air (not rainbow)
+- Smooth contour lines preferred over jagged marching-squares output
 
 ## Recent Changes
+- Added Nozzle-Bed Gap (mm) input to UI with auto-calculated simulation steps
+- Auto-step formula: steps = ceil(1.3 * gap / u_max / dt), rounded to nearest 500
+- Two-color VOF colormap: red (polymer, alpha=1) ↔ blue (air, alpha=0) with smooth blending
+- Rainbow colormap preserved for temperature, velocity, pressure fields
+- Smooth free surface contour using Catmull-Rom spline (cubic Bezier) interpolation
 - Added print bed wall BC at j=0: no-slip (uz=0, ur=0), zero-gradient temperature
 - Near-bed momentum solve with viscous diffusion for polymer spreading on print bed
 - Moved pressure reference from j=0 row to far-field air corner (single Dirichlet point)
-- Increased default steps to 8000 (frames_per_update=80) for full bed contact simulation
-- Polymer exits nozzle, swells (die swell), travels to bed, and spreads radially on contact
-- Fixed z-axis orientation: nozzle at positive z (top), extrudate at negative z (bottom)
-- Pre-filled nozzle interior with polymer (alpha=1) for stable startup
 - Hybrid velocity approach: prescribed Poiseuille profile inside nozzle, plug flow extension in extrudate
 - Air region (alpha < 0.01) gets zero velocity to avoid density-ratio instability
-- Aligned frontend defaults with backend: nr=15, nz=30, dt=1e-5, steps=8000, frames_per_update=80
 - Inlet BC at j=nz-1 (top), print bed wall at j=0 (bottom)
 - Simulation runs 8000 steps stably with clean velocity profiles (uz ∈ [-0.08, 0.002] m/s)
