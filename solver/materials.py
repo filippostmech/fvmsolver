@@ -6,7 +6,7 @@ class TPUMaterial:
     def __init__(self, params=None):
         p = params or {}
         self.rho_polymer = p.get('rho_polymer', 1150.0)
-        self.rho_air = p.get('rho_air', 1.2)
+        self.rho_air = p.get('rho_air', 100.0)
         self.cp_polymer = p.get('cp_polymer', 1800.0)
         self.cp_air = p.get('cp_air', 1005.0)
         self.k_polymer = p.get('k_polymer', 0.22)
@@ -19,7 +19,7 @@ class TPUMaterial:
         self.n_cy = p.get('n_cy', 0.35)
 
         self.eta_min = p.get('eta_min', 1.0)
-        self.eta_max = p.get('eta_max', 50000.0)
+        self.eta_max = p.get('eta_max', 5000.0)
 
         self.T_ref = p.get('T_ref', 493.15)
         self.E_a = p.get('E_a', 40000.0)

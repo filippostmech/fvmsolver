@@ -21,9 +21,9 @@ class SimConfig(BaseModel):
     flow_rate: float = 5e-9
     T_nozzle: float = 493.15
     T_ambient: float = 298.15
-    nr: int = 30
-    nz: int = 60
-    dt: float = 1e-6
+    nr: int = 15
+    nz: int = 30
+    dt: float = 1e-5
     h_conv: float = 10.0
     sigma: float = 0.035
     eta_0: float = 3000.0
@@ -34,8 +34,8 @@ class SimConfig(BaseModel):
     E_a: float = 40000.0
     c_alpha: float = 1.0
     gravity: float = -9.81
-    n_steps: int = 200
-    frames_per_update: int = 5
+    n_steps: int = 1000
+    frames_per_update: int = 20
 
 
 def run_simulation_sync(run_id: str, config: dict, n_steps: int, frames_per_update: int):

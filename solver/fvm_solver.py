@@ -100,113 +100,144 @@ def compute_viscosity_field(gamma_dot, T, alpha, nr, nz,
 
 
 @njit(cache=True)
-def compute_momentum_rhs_axisym(ur, uz, rho, eta, alpha,
-                                 r_centers, r_faces, dr, dz, nr, nz,
-                                 gravity, f_st_r, f_st_z):
-    rhs_ur = np.zeros((nr, nz))
-    rhs_uz = np.zeros((nr, nz))
+def solve_simple_momentum(ur, uz, ur_old, uz_old, rho, eta, alpha, p_old,
+                          r_centers, r_faces, dr, dz, nr, nz,
+                          gravity, f_st_r, f_st_z, dt, rho_floor):
+    ur_star = ur.copy()
+    uz_star = uz.copy()
+    a_P_r = np.zeros((nr, nz))
+    a_P_z = np.zeros((nr, nz))
+    alpha_thresh = 0.01
 
-    for i in range(nr):
-        for j in range(nz):
-            r_c = max(r_centers[i], 1e-12)
-            rho_c = max(rho[i, j], 1e-10)
-            V = np.pi * (r_faces[i + 1]**2 - r_faces[i]**2) * dz
+    for gs_iter in range(30):
+        max_resid = 0.0
+        for i in range(nr):
+            for j in range(nz):
+                if alpha[i, j] < alpha_thresh:
+                    ur_star[i, j] = 0.0
+                    uz_star[i, j] = 0.0
+                    a_P_r[i, j] = 1.0
+                    a_P_z[i, j] = 1.0
+                    continue
 
-            conv_ur = 0.0
-            conv_uz = 0.0
-            r_e = r_faces[i + 1]
-            r_w = r_faces[i]
-            A_e = 2.0 * np.pi * r_e * dz
-            A_w = 2.0 * np.pi * r_w * dz
-            A_n = np.pi * (r_e**2 - r_w**2)
-            A_s = A_n
+                r_c = max(r_centers[i], 1e-12)
+                rho_c = max(rho[i, j], rho_floor)
+                r_e = r_faces[i + 1]
+                r_w = r_faces[i]
+                V = np.pi * (r_e**2 - r_w**2) * dz
+                A_e = 2.0 * np.pi * r_e * dz
+                A_w = 2.0 * np.pi * r_w * dz
+                A_n = np.pi * (r_e**2 - r_w**2)
+                A_s = A_n
 
-            if i < nr - 1:
-                ur_e = 0.5 * (ur[i, j] + ur[i + 1, j])
-                rho_e = 0.5 * (rho[i, j] + rho[i + 1, j])
-                mdot_e = rho_e * ur_e * A_e
-                if ur_e >= 0:
-                    conv_ur += mdot_e * ur[i, j]
-                    conv_uz += mdot_e * uz[i, j]
-                else:
-                    conv_ur += mdot_e * ur[i + 1, j]
-                    conv_uz += mdot_e * uz[i + 1, j]
-            else:
-                conv_ur += 0.0
-                conv_uz += 0.0
+                a_diag_r = rho_c * V / dt
+                a_diag_z = rho_c * V / dt
+                b_r = rho_c * V / dt * ur_old[i, j]
+                b_z = rho_c * V / dt * uz_old[i, j]
 
-            if i > 0:
-                ur_w = 0.5 * (ur[i - 1, j] + ur[i, j])
-                rho_w = 0.5 * (rho[i - 1, j] + rho[i, j])
-                mdot_w = rho_w * ur_w * A_w
-                if ur_w >= 0:
-                    conv_ur -= mdot_w * ur[i - 1, j]
-                    conv_uz -= mdot_w * uz[i - 1, j]
-                else:
-                    conv_ur -= mdot_w * ur[i, j]
-                    conv_uz -= mdot_w * uz[i, j]
-            else:
-                pass
+                b_z += rho_c * gravity * V
+                b_r += f_st_r[i, j] * V
+                b_z += f_st_z[i, j] * V
 
-            if j < nz - 1:
-                uz_n = 0.5 * (uz[i, j] + uz[i, j + 1])
-                rho_n = 0.5 * (rho[i, j] + rho[i, j + 1])
-                mdot_n = rho_n * uz_n * A_n
-                if uz_n >= 0:
-                    conv_ur += mdot_n * ur[i, j]
-                    conv_uz += mdot_n * uz[i, j]
-                else:
-                    conv_ur += mdot_n * ur[i, j + 1]
-                    conv_uz += mdot_n * uz[i, j + 1]
-            else:
-                uz_n = uz[i, j]
-                mdot_n = rho[i, j] * uz_n * A_n
-                conv_ur += mdot_n * ur[i, j]
-                conv_uz += mdot_n * uz[i, j]
+                dp_dr = 0.0
+                if i > 0 and i < nr - 1:
+                    dp_dr = (p_old[i + 1, j] - p_old[i - 1, j]) / (2.0 * dr)
+                elif i == 0 and nr > 1:
+                    dp_dr = (p_old[1, j] - p_old[0, j]) / dr
+                elif i == nr - 1:
+                    dp_dr = (p_old[i, j] - p_old[i - 1, j]) / dr
+                dp_dz = 0.0
+                if j > 0 and j < nz - 1:
+                    dp_dz = (p_old[i, j + 1] - p_old[i, j - 1]) / (2.0 * dz)
+                elif j == 0 and nz > 1:
+                    dp_dz = (p_old[i, j + 1] - p_old[i, j]) / dz
+                elif j == nz - 1 and nz > 1:
+                    dp_dz = (p_old[i, j] - p_old[i, j - 1]) / dz
+                b_r -= dp_dr * V
+                b_z -= dp_dz * V
 
-            if j > 0:
-                uz_s = 0.5 * (uz[i, j - 1] + uz[i, j])
-                rho_s = 0.5 * (rho[i, j - 1] + rho[i, j])
-                mdot_s = rho_s * uz_s * A_s
-                if uz_s >= 0:
-                    conv_ur -= mdot_s * ur[i, j - 1]
-                    conv_uz -= mdot_s * uz[i, j - 1]
-                else:
-                    conv_ur -= mdot_s * ur[i, j]
-                    conv_uz -= mdot_s * uz[i, j]
+                if i < nr - 1 and alpha[i + 1, j] >= alpha_thresh:
+                    ur_e = 0.5 * (ur_star[i, j] + ur_star[i + 1, j])
+                    rho_e = 0.5 * (rho[i, j] + rho[i + 1, j])
+                    mdot_e = rho_e * ur_e * A_e
+                    F_e = max(mdot_e, 0.0)
+                    eta_e = 0.5 * (eta[i, j] + eta[i + 1, j])
+                    D_e = eta_e * A_e / dr
+                    a_diag_r += F_e + D_e
+                    a_diag_z += F_e + D_e
+                    a_nb_r = max(-mdot_e, 0.0) + D_e
+                    a_nb_z = a_nb_r
+                    b_r += a_nb_r * ur_star[i + 1, j]
+                    b_z += a_nb_z * uz_star[i + 1, j]
 
-            diff_ur = 0.0
-            diff_uz = 0.0
+                if i > 0 and alpha[i - 1, j] >= alpha_thresh:
+                    ur_w = 0.5 * (ur_star[i - 1, j] + ur_star[i, j])
+                    rho_w = 0.5 * (rho[i - 1, j] + rho[i, j])
+                    mdot_w = rho_w * ur_w * A_w
+                    F_w = max(-mdot_w, 0.0)
+                    eta_w = 0.5 * (eta[i - 1, j] + eta[i, j])
+                    D_w = eta_w * A_w / dr
+                    a_diag_r += F_w + D_w
+                    a_diag_z += F_w + D_w
+                    a_nb_r = max(mdot_w, 0.0) + D_w
+                    a_nb_z = a_nb_r
+                    b_r += a_nb_r * ur_star[i - 1, j]
+                    b_z += a_nb_z * uz_star[i - 1, j]
+                elif i == 0:
+                    D_w_sym = eta[i, j] * A_w / (0.5 * dr)
+                    a_diag_r += D_w_sym
 
-            if i < nr - 1:
-                eta_e = 0.5 * (eta[i, j] + eta[i + 1, j])
-                diff_ur += eta_e * A_e * (ur[i + 1, j] - ur[i, j]) / dr
-                diff_uz += eta_e * A_e * (uz[i + 1, j] - uz[i, j]) / dr
-            if i > 0:
-                eta_w = 0.5 * (eta[i - 1, j] + eta[i, j])
-                diff_ur -= eta_w * A_w * (ur[i, j] - ur[i - 1, j]) / dr
-                diff_uz -= eta_w * A_w * (uz[i, j] - uz[i - 1, j]) / dr
-            elif i == 0:
-                diff_ur -= eta[i, j] * A_w * ur[i, j] / (0.5 * dr)
-                diff_uz -= 0.0
+                if j < nz - 1 and alpha[i, j + 1] >= alpha_thresh:
+                    uz_n = 0.5 * (uz_star[i, j] + uz_star[i, j + 1])
+                    rho_n = 0.5 * (rho[i, j] + rho[i, j + 1])
+                    mdot_n = rho_n * uz_n * A_n
+                    F_n = max(mdot_n, 0.0)
+                    eta_n = 0.5 * (eta[i, j] + eta[i, j + 1])
+                    D_n = eta_n * A_n / dz
+                    a_diag_r += F_n + D_n
+                    a_diag_z += F_n + D_n
+                    a_nb_r = max(-mdot_n, 0.0) + D_n
+                    a_nb_z = a_nb_r
+                    b_r += a_nb_r * ur_star[i, j + 1]
+                    b_z += a_nb_z * uz_star[i, j + 1]
 
-            if j < nz - 1:
-                eta_n = 0.5 * (eta[i, j] + eta[i, j + 1])
-                diff_ur += eta_n * A_n * (ur[i, j + 1] - ur[i, j]) / dz
-                diff_uz += eta_n * A_n * (uz[i, j + 1] - uz[i, j]) / dz
-            if j > 0:
-                eta_s = 0.5 * (eta[i, j - 1] + eta[i, j])
-                diff_ur -= eta_s * A_s * (ur[i, j] - ur[i, j - 1]) / dz
-                diff_uz -= eta_s * A_s * (uz[i, j] - uz[i, j - 1]) / dz
+                if j > 0 and alpha[i, j - 1] >= alpha_thresh:
+                    uz_s = 0.5 * (uz_star[i, j - 1] + uz_star[i, j])
+                    rho_s = 0.5 * (rho[i, j - 1] + rho[i, j])
+                    mdot_s = rho_s * uz_s * A_s
+                    F_s = max(-mdot_s, 0.0)
+                    eta_s = 0.5 * (eta[i, j - 1] + eta[i, j])
+                    D_s = eta_s * A_s / dz
+                    a_diag_r += F_s + D_s
+                    a_diag_z += F_s + D_s
+                    a_nb_r = max(mdot_s, 0.0) + D_s
+                    a_nb_z = a_nb_r
+                    b_r += a_nb_r * ur_star[i, j - 1]
+                    b_z += a_nb_z * uz_star[i, j - 1]
 
-            hoop_stress = -eta[i, j] * ur[i, j] / (r_c**2) * V
+                hoop = eta[i, j] / (r_c**2) * V
+                a_diag_r += hoop
 
-            rhs_ur[i, j] = (-conv_ur + diff_ur + hoop_stress +
-                           f_st_r[i, j] * V) / V
-            rhs_uz[i, j] = (-conv_uz + diff_uz +
-                           rho_c * gravity * V + f_st_z[i, j] * V) / V
+                if a_diag_r > 1e-30:
+                    ur_new = b_r / a_diag_r
+                    resid = abs(ur_new - ur_star[i, j])
+                    if resid > max_resid:
+                        max_resid = resid
+                    ur_star[i, j] = 0.8 * ur_new + 0.2 * ur_star[i, j]
+                if a_diag_z > 1e-30:
+                    uz_new = b_z / a_diag_z
+                    resid = abs(uz_new - uz_star[i, j])
+                    if resid > max_resid:
+                        max_resid = resid
+                    uz_star[i, j] = 0.8 * uz_new + 0.2 * uz_star[i, j]
 
-    return rhs_ur, rhs_uz
+                a_P_r[i, j] = a_diag_r
+                a_P_z[i, j] = a_diag_z
+
+        if max_resid < 1e-6:
+            break
+
+    return ur_star, uz_star, a_P_z
 
 
 @njit(cache=True)
@@ -503,6 +534,136 @@ def advect_temperature_axisym(T, ur, uz, rho, cp, k, r_centers, r_faces,
     return T_new
 
 
+@njit(cache=True)
+def _implicit_diffusion_solve(u, u_star, eta, rho, alpha, r_centers, r_faces, dr, dz, nr, nz, dt, rho_floor):
+    omega = 1.2
+    alpha_thresh = 0.01
+    for iteration in range(50):
+        max_resid = 0.0
+        for i in range(nr):
+            for j in range(nz):
+                if alpha[i, j] < alpha_thresh:
+                    continue
+
+                r_c = max(r_centers[i], 1e-12)
+                r_e = r_faces[i + 1]
+                r_w = r_faces[i]
+                V = np.pi * (r_e**2 - r_w**2) * dz
+                rho_ij = max(rho[i, j], rho_floor)
+                A_e = 2.0 * np.pi * r_e * dz
+                A_w = 2.0 * np.pi * r_w * dz
+                A_n = np.pi * (r_e**2 - r_w**2)
+                A_s = A_n
+
+                diag = rho_ij * V / dt
+                rhs = rho_ij * V / dt * u_star[i, j]
+
+                if i < nr - 1 and alpha[i + 1, j] >= alpha_thresh:
+                    eta_e = 0.5 * (eta[i, j] + eta[i + 1, j])
+                    coeff = eta_e * A_e / dr
+                    diag += coeff
+                    rhs += coeff * u[i + 1, j]
+                if i > 0 and alpha[i - 1, j] >= alpha_thresh:
+                    eta_w = 0.5 * (eta[i - 1, j] + eta[i, j])
+                    coeff = eta_w * A_w / dr
+                    diag += coeff
+                    rhs += coeff * u[i - 1, j]
+
+                if j < nz - 1 and alpha[i, j + 1] >= alpha_thresh:
+                    eta_n = 0.5 * (eta[i, j] + eta[i, j + 1])
+                    coeff = eta_n * A_n / dz
+                    diag += coeff
+                    rhs += coeff * u[i, j + 1]
+                if j > 0 and alpha[i, j - 1] >= alpha_thresh:
+                    eta_s = 0.5 * (eta[i, j - 1] + eta[i, j])
+                    coeff = eta_s * A_s / dz
+                    diag += coeff
+                    rhs += coeff * u[i, j - 1]
+
+                if diag < 1e-30:
+                    continue
+
+                u_new = rhs / diag
+                u_sor = u[i, j] + omega * (u_new - u[i, j])
+                resid = abs(u_sor - u[i, j])
+                if resid > max_resid:
+                    max_resid = resid
+                u[i, j] = u_sor
+
+        if max_resid < 1e-8 * max(np.max(np.abs(u)), 1e-10):
+            break
+
+    return u
+
+
+@njit(cache=True)
+def _sor_pressure_solve(p, div_star, rho, r_centers, r_faces, dr, dz, nr, nz, dt_sub, rho_floor):
+    omega = 1.5
+    for iteration in range(500):
+        max_resid = 0.0
+        for i in range(nr):
+            for j in range(nz):
+                if j == 0:
+                    p[i, j] = 0.0
+                    continue
+
+                r_c = max(r_centers[i], 1e-12)
+                rhs = 0.0
+                diag = 0.0
+
+                if i < nr - 1:
+                    rho_e = 0.5 * (rho[i, j] + rho[i + 1, j])
+                    rho_e = max(rho_e, rho_floor)
+                    r_e = r_faces[i + 1]
+                    coeff = r_e / (rho_e * r_c * dr**2)
+                    rhs += coeff * p[i + 1, j]
+                    diag += coeff
+                if i > 0:
+                    rho_w = 0.5 * (rho[i - 1, j] + rho[i, j])
+                    rho_w = max(rho_w, rho_floor)
+                    r_w = r_faces[i]
+                    coeff = r_w / (rho_w * r_c * dr**2)
+                    rhs += coeff * p[i - 1, j]
+                    diag += coeff
+
+                if j < nz - 1:
+                    rho_n = 0.5 * (rho[i, j] + rho[i, j + 1])
+                    rho_n = max(rho_n, rho_floor)
+                    coeff = 1.0 / (rho_n * dz**2)
+                    rhs += coeff * p[i, j + 1]
+                    diag += coeff
+                if j > 0:
+                    rho_s = 0.5 * (rho[i, j - 1] + rho[i, j])
+                    rho_s = max(rho_s, rho_floor)
+                    coeff = 1.0 / (rho_s * dz**2)
+                    rhs += coeff * p[i, j - 1]
+                    diag += coeff
+
+                if diag < 1e-30:
+                    continue
+
+                source = div_star[i, j] / dt_sub
+
+                p_gs = (rhs - source) / diag
+                p_new = p[i, j] + omega * (p_gs - p[i, j])
+
+                resid = abs(p_new - p[i, j])
+                if resid > max_resid:
+                    max_resid = resid
+
+                p[i, j] = p_new
+
+        p_abs_max = 0.0
+        for i in range(nr):
+            for j in range(nz):
+                if abs(p[i, j]) > p_abs_max:
+                    p_abs_max = abs(p[i, j])
+        if max_resid < 1e-6 * max(p_abs_max, 1.0):
+            break
+
+    return p
+
+
 class CFDSolver:
     def __init__(self, config=None):
         c = config or {}
@@ -511,8 +672,8 @@ class CFDSolver:
         self.nozzle_radius = self.nozzle_diameter / 2.0
 
         self.domain_r = c.get('domain_r', self.nozzle_radius * 3.0)
-        self.domain_z_min = -self.nozzle_length
-        self.domain_z_max = c.get('domain_z_ext', self.nozzle_length * 1.5)
+        self.domain_z_min = -c.get('domain_z_ext', self.nozzle_length * 1.5)
+        self.domain_z_max = self.nozzle_length
 
         self.nr = c.get('nr', 30)
         self.nz = c.get('nz', 60)
@@ -547,6 +708,7 @@ class CFDSolver:
 
     def _init_fields(self):
         nr, nz = self.nr, self.nz
+        g = self.grid
         self.ur = np.zeros((nr, nz))
         self.uz = np.zeros((nr, nz))
         self.p = np.zeros((nr, nz))
@@ -556,11 +718,24 @@ class CFDSolver:
         inlet_area = np.pi * self.nozzle_radius**2
         self.u_inlet = self.flow_rate / max(inlet_area, 1e-20)
 
+        nozzle_r_idx = min(np.searchsorted(g.r_faces, self.nozzle_radius), nr)
+        nozzle_z_start = np.searchsorted(g.z_centers, 0.0)
+
+        for j in range(nozzle_z_start, nz):
+            for i in range(nozzle_r_idx):
+                r = g.r_centers[i]
+                R = self.nozzle_radius
+                profile = 2.0 * self.u_inlet * (1.0 - (r / R)**2)
+                self.uz[i, j] = -profile
+                self.T[i, j] = self.T_nozzle
+                self.alpha[i, j] = 1.0
+
         self.rho = np.zeros((nr, nz))
         self.cp = np.zeros((nr, nz))
         self.k_field = np.zeros((nr, nz))
         self.eta = np.zeros((nr, nz))
         self._update_properties()
+
 
     def _update_properties(self):
         m = self.material
@@ -574,21 +749,21 @@ class CFDSolver:
     def _apply_boundary_conditions(self):
         g = self.grid
         nozzle_r_idx = min(np.searchsorted(g.r_faces, self.nozzle_radius), self.nr)
-        nozzle_z_end = np.searchsorted(g.z_centers, 0.0)
+        nozzle_z_start = np.searchsorted(g.z_centers, 0.0)
 
         for i in range(nozzle_r_idx):
             r = g.r_centers[i]
             R = self.nozzle_radius
             profile = 2.0 * self.u_inlet * (1.0 - (r / R)**2)
-            self.uz[i, 0] = profile
-            self.ur[i, 0] = 0.0
-            self.T[i, 0] = self.T_nozzle
-            self.alpha[i, 0] = 1.0
+            self.uz[i, -1] = -profile
+            self.ur[i, -1] = 0.0
+            self.T[i, -1] = self.T_nozzle
+            self.alpha[i, -1] = 1.0
 
-        for j in range(0, nozzle_z_end):
+        for j in range(nozzle_z_start, self.nz):
             if nozzle_r_idx < self.nr:
-                self.ur[nozzle_r_idx - 1, j] = 0.0
-                self.uz[nozzle_r_idx - 1, j] = 0.0
+                self.ur[nozzle_r_idx, j] = 0.0
+                self.uz[nozzle_r_idx, j] = 0.0
                 self.T[nozzle_r_idx - 1, j] = self.T_nozzle
 
         self.ur[0, :] = 0.0
@@ -596,11 +771,11 @@ class CFDSolver:
         self.ur[-1, :] = 0.0
         self.uz[-1, :] = 0.0
 
-        self.p[:, -1] = 0.0
+        self.p[:, 0] = 0.0
 
         for i in range(self.nr):
-            self.uz[i, -1] = self.uz[i, -2] if self.nz > 1 else 0.0
-            self.T[i, -1] = self.T[i, -2] if self.nz > 1 else self.T_ambient
+            self.uz[i, 0] = self.uz[i, 1] if self.nz > 1 else 0.0
+            self.T[i, 0] = self.T[i, 1] if self.nz > 1 else self.T_ambient
 
     def _compute_adaptive_dt(self):
         g = self.grid
@@ -616,62 +791,16 @@ class CFDSolver:
         dt_adapt = min(dt_cfl, self.dt)
         return max(dt_adapt, self.dt * 0.01)
 
-    def _solve_pressure_poisson(self, div_star, dt_sub):
+    def _solve_pressure_correction(self, div_star, dt_sub):
         nr, nz = self.nr, self.nz
         g = self.grid
-        p = self.p.copy()
+        p_prime = np.zeros((nr, nz))
+        rho_floor = self.material.rho_polymer * 0.1
 
-        for iteration in range(100):
-            p_old = p.copy()
-            max_resid = 0.0
-
-            for i in range(nr):
-                for j in range(nz):
-                    if j == nz - 1:
-                        p[i, j] = 0.0
-                        continue
-
-                    r_c = max(g.r_centers[i], 1e-12)
-                    rhs = 0.0
-                    diag = 0.0
-
-                    if i < nr - 1:
-                        r_e = g.r_faces[i + 1]
-                        coeff = r_e / (r_c * g.dr**2)
-                        rhs += coeff * p_old[i + 1, j]
-                        diag += coeff
-                    if i > 0:
-                        r_w = g.r_faces[i]
-                        coeff = r_w / (r_c * g.dr**2)
-                        rhs += coeff * p_old[i - 1, j]
-                        diag += coeff
-
-                    if j < nz - 1:
-                        coeff = 1.0 / g.dz**2
-                        rhs += coeff * p_old[i, j + 1]
-                        diag += coeff
-                    if j > 0:
-                        coeff = 1.0 / g.dz**2
-                        rhs += coeff * p_old[i, j - 1]
-                        diag += coeff
-
-                    if diag < 1e-30:
-                        continue
-
-                    rho_c = max(self.rho[i, j], 1e-10)
-                    source = rho_c * div_star[i, j] / dt_sub
-
-                    p_new = (rhs - source) / diag
-                    p[i, j] = 0.7 * p_new + 0.3 * p_old[i, j]
-
-                    resid = abs(p[i, j] - p_old[i, j])
-                    if resid > max_resid:
-                        max_resid = resid
-
-            if max_resid < 1e-6 * max(np.max(np.abs(p)), 1.0):
-                break
-
-        return p
+        p_prime = _sor_pressure_solve(
+            p_prime, div_star, self.rho, g.r_centers, g.r_faces,
+            g.dr, g.dz, nr, nz, dt_sub, rho_floor)
+        return p_prime
 
     def step(self):
         g = self.grid
@@ -697,49 +826,91 @@ class CFDSolver:
         f_st_r, f_st_z = compute_csf_force(
             self.alpha, m.sigma, g.r_centers, g.dr, g.dz, nr, nz)
 
-        rhs_ur, rhs_uz = compute_momentum_rhs_axisym(
-            self.ur, self.uz, self.rho, self.eta, self.alpha,
-            g.r_centers, g.r_faces, g.dr, g.dz, nr, nz,
-            self.gravity, f_st_r, f_st_z)
+        alpha_threshold = 0.01
+        nozzle_r_idx = min(np.searchsorted(g.r_faces, self.nozzle_radius), nr)
+        nozzle_z_start = np.searchsorted(g.z_centers, 0.0)
 
-        ur_star = np.zeros_like(self.ur)
-        uz_star = np.zeros_like(self.uz)
+        nozzle_exit_uz = np.zeros(nr)
+        for i in range(nozzle_r_idx):
+            r = g.r_centers[i]
+            R = self.nozzle_radius
+            nozzle_exit_uz[i] = -2.0 * self.u_inlet * (1.0 - (r / R)**2)
+
+        ur_star = self.ur.copy()
+        uz_star = self.uz.copy()
+
         for i in range(nr):
             for j in range(nz):
-                rho_ij = max(self.rho[i, j], 1e-10)
-                ur_star[i, j] = self.ur[i, j] + dt * rhs_ur[i, j] / rho_ij
-                uz_star[i, j] = self.uz[i, j] + dt * rhs_uz[i, j] / rho_ij
+                if self.alpha[i, j] < alpha_threshold:
+                    ur_star[i, j] = 0.0
+                    uz_star[i, j] = 0.0
+                    continue
+
+                if j >= nozzle_z_start and i < nozzle_r_idx:
+                    continue
+
+                if i < nozzle_r_idx:
+                    uz_star[i, j] = nozzle_exit_uz[i]
+                    ur_star[i, j] = 0.0
+                else:
+                    uz_star[i, j] = 0.0
+                    ur_star[i, j] = 0.0
+
+        for i in range(nozzle_r_idx):
+            for j in range(nozzle_z_start, nz):
+                r = g.r_centers[i]
+                R = self.nozzle_radius
+                profile = 2.0 * self.u_inlet * (1.0 - (r / R)**2)
+                uz_star[i, j] = -profile
+                ur_star[i, j] = 0.0
+
+        ur_star[0, :] = 0.0
+        ur_star[-1, :] = 0.0
+        uz_star[-1, :] = 0.0
 
         for piso_iter in range(self.n_piso):
             div_star = compute_divergence_axisym(
                 ur_star, uz_star, g.r_centers, g.r_faces, g.dr, g.dz, nr, nz)
 
-            p_corr = self._solve_pressure_poisson(div_star, dt)
+            p_prime = self._solve_pressure_correction(div_star, dt)
 
-            np.nan_to_num(p_corr, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+            np.nan_to_num(p_prime, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+
+            rho_min_corr = self.material.rho_polymer * 0.1
 
             for i in range(nr):
                 for j in range(nz):
-                    rho_ij = max(self.rho[i, j], 1e-10)
+                    if j >= nozzle_z_start and i < nozzle_r_idx:
+                        continue
+                    if self.alpha[i, j] < alpha_threshold:
+                        continue
+
+                    rho_ij = max(self.rho[i, j], rho_min_corr)
 
                     dp_dr = 0.0
                     if i > 0 and i < nr - 1:
-                        dp_dr = (p_corr[i + 1, j] - p_corr[i - 1, j]) / (2.0 * g.dr)
+                        dp_dr = (p_prime[i + 1, j] - p_prime[i - 1, j]) / (2.0 * g.dr)
                     elif i == 0 and nr > 1:
-                        dp_dr = (p_corr[1, j] - p_corr[0, j]) / g.dr
+                        dp_dr = (p_prime[1, j] - p_prime[0, j]) / g.dr
                     elif i == nr - 1:
-                        dp_dr = (p_corr[i, j] - p_corr[i - 1, j]) / g.dr
+                        dp_dr = (p_prime[i, j] - p_prime[i - 1, j]) / g.dr
 
                     dp_dz = 0.0
                     if j > 0 and j < nz - 1:
-                        dp_dz = (p_corr[i, j + 1] - p_corr[i, j - 1]) / (2.0 * g.dz)
+                        dp_dz = (p_prime[i, j + 1] - p_prime[i, j - 1]) / (2.0 * g.dz)
                     elif j == 0 and nz > 1:
-                        dp_dz = (p_corr[i, j + 1] - p_corr[i, j]) / g.dz
+                        dp_dz = (p_prime[i, j + 1] - p_prime[i, j]) / g.dz
+                    elif j == nz - 1 and nz > 1:
+                        dp_dz = (p_prime[i, j] - p_prime[i, j - 1]) / g.dz
 
                     ur_star[i, j] -= dt * dp_dr / rho_ij
                     uz_star[i, j] -= dt * dp_dz / rho_ij
 
-            self.p += self.p_relax * p_corr
+            self.p += self.p_relax * p_prime
+
+        ur_star[0, :] = 0.0
+        ur_star[-1, :] = 0.0
+        uz_star[-1, :] = 0.0
 
         self.ur = self.u_relax * ur_star + (1.0 - self.u_relax) * self.ur
         self.uz = self.u_relax * uz_star + (1.0 - self.u_relax) * self.uz
@@ -748,10 +919,10 @@ class CFDSolver:
         np.nan_to_num(self.uz, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
         np.nan_to_num(self.p, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
 
-        u_max_phys = max(self.u_inlet * 10.0, 1.0)
+        u_max_phys = max(self.u_inlet * 50.0, 5.0)
         np.clip(self.ur, -u_max_phys, u_max_phys, out=self.ur)
         np.clip(self.uz, -u_max_phys, u_max_phys, out=self.uz)
-        np.clip(self.p, -1e7, 1e7, out=self.p)
+        np.clip(self.p, -1e12, 1e12, out=self.p)
 
         self.alpha = advect_vof_axisym(
             self.alpha, self.ur, self.uz,
@@ -795,10 +966,10 @@ class CFDSolver:
         else:
             cap_dt = 1e10
 
-        nozzle_z_end = np.searchsorted(g.z_centers, 0.0)
+        nozzle_z_start = np.searchsorted(g.z_centers, 0.0)
 
         swell_ratios = []
-        for j in range(nozzle_z_end, min(nozzle_z_end + 20, self.nz)):
+        for j in range(nozzle_z_start - 1, max(nozzle_z_start - 21, -1), -1):
             for i in range(self.nr - 1, -1, -1):
                 if self.alpha[i, j] > 0.5:
                     swell_ratios.append(g.r_centers[i] / self.nozzle_radius)
@@ -806,8 +977,8 @@ class CFDSolver:
             else:
                 swell_ratios.append(0.0)
 
-        p_inlet = np.mean(self.p[:, 0])
-        p_outlet = np.mean(self.p[:, -1])
+        p_inlet = np.mean(self.p[:, -1])
+        p_outlet = np.mean(self.p[:, 0])
 
         centerline_T = self.T[0, :].tolist()
 
